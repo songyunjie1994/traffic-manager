@@ -3,12 +3,12 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#f6f4ef" />
+    <meta name="theme-color" content="#5747e8" />
     <meta
       name="description"
-      content="一套部署在 GitHub Pages、数据保存在浏览器本地的投流管理系统。"
+      content="采用寄样管理系统视觉风格的充值、消耗与报表管理工作台。"
     />
-    <title>流量罗盘 · 投流管理系统</title>
+    <title>寄样管理系统 · 资金投放工作台</title>
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
@@ -17,32 +17,34 @@
         <div class="brand">
           <div class="brand-mark" aria-hidden="true">
             <svg viewBox="0 0 40 40" role="img">
-              <path d="M8 29.5 16.5 10l6 12 4.5-9L33 29.5H8Z" />
-              <circle cx="16.5" cy="10" r="3" />
-              <circle cx="27" cy="13" r="3" />
+              <path d="M7.5 13.5 20 7l12.5 6.5v15L20 35 7.5 28.5v-15Z" />
+              <path d="m7.5 13.5 12.5 7 12.5-7M20 20.5V35M14 10.2l12.5 6.6v6.4" />
             </svg>
           </div>
           <div>
-            <strong>流量罗盘</strong>
-            <span>投流管理系统</span>
+            <div class="brand-title-row">
+              <strong>寄样管理</strong>
+              <span class="brand-badge">本地版</span>
+            </div>
+            <span>充值 · 消耗 · 报表</span>
           </div>
         </div>
 
         <nav class="nav-list" aria-label="主导航">
           <button class="nav-item" data-view="campaigns">
-            <span class="nav-icon" aria-hidden="true">＋</span>
+            <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 7.5h16v11H4zM4 10.5h16M16.5 14v4M14.5 16h4" /></svg></span>
             充值端
           </button>
           <button class="nav-item" data-view="records">
-            <span class="nav-icon" aria-hidden="true">↗</span>
+            <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 18 10 13l3 3 6-8M14 8h5v5" /></svg></span>
             消耗端
           </button>
           <button class="nav-item active" data-view="dashboard">
-            <span class="nav-icon" aria-hidden="true">⌁</span>
+            <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 19V11h3v8H5Zm5.5 0V5h3v14h-3Zm5.5 0v-6h3v6h-3Z" /></svg></span>
             报表端
           </button>
           <button class="nav-item" data-view="backup">
-            <span class="nav-icon" aria-hidden="true">⤓</span>
+            <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 6.5C5 5.1 8.1 4 12 4s7 1.1 7 2.5-3.1 2.5-7 2.5-7-1.1-7-2.5Zm0 0V12c0 1.4 3.1 2.5 7 2.5M19 6.5V12M5 12v5.5C5 18.9 8.1 20 12 20m4-4v5m-2-2 2 2 2-2" /></svg></span>
             数据备份
           </button>
         </nav>
@@ -51,7 +53,7 @@
           <span class="status-dot"></span>
           <div>
             <strong>本地安全存储</strong>
-            <p>数据仅保存在当前浏览器，请定期导出备份。</p>
+            <p>像寄样单一样清晰留档，数据仅保存在当前浏览器。</p>
           </div>
         </div>
       </aside>
@@ -80,8 +82,8 @@
           <section class="view active" id="dashboardView">
             <div class="welcome-row">
               <div>
-                <p class="section-kicker">资金与投放全景</p>
-                <h2>充值、消耗、余额与回报，一张表看清。</h2>
+                <p class="section-kicker">寄样式业务看板</p>
+                <h2>每笔充值与消耗，都像寄样单一样清楚。</h2>
                 <p id="dashboardSummary">正在汇总投流表现…</p>
               </div>
               <span class="data-mode-badge" id="dataModeBadge">演示数据</span>
