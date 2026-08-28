@@ -6,10 +6,10 @@
     <meta name="theme-color" content="#5747e8" />
     <meta
       name="description"
-      content="支持充值登记、消耗录入与投流报表的本地管理系统。"
+      content="以云端数据为主，支持充值登记、消耗录入与投流报表的管理系统。"
     />
     <title>投流管理系统</title>
-    <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="styles.css?v=1.1.0" />
   </head>
   <body>
     <div class="app-shell">
@@ -24,7 +24,7 @@
           <div>
             <div class="brand-title-row">
               <strong>寄样管理</strong>
-              <span class="brand-badge">本地版</span>
+              <span class="brand-badge">云端版</span>
             </div>
             <span>充值 · 消耗 · 报表</span>
           </div>
@@ -48,8 +48,8 @@
         <div class="sidebar-note">
           <span class="status-dot"></span>
           <div>
-            <strong>本地安全存储</strong>
-            <p>像寄样单一样清晰留档，数据仅保存在当前浏览器。</p>
+            <strong>云端数据同步</strong>
+            <p>数据以云端为准，浏览器仅保留断网缓存。</p>
           </div>
         </div>
       </aside>
@@ -67,6 +67,10 @@
             <div class="header-copy">
               <h1 id="viewTitle">报表端</h1>
               <p class="eyebrow" id="viewEyebrow">查看充值、消耗与账户余额汇总</p>
+              <p class="cloud-sync-status" id="cloudSyncStatus" data-state="syncing" aria-live="polite">
+                <span class="cloud-status-dot" aria-hidden="true"></span>
+                <span id="cloudSyncText">正在连接云端</span>
+              </p>
             </div>
           </div>
           <div class="topbar-actions">
@@ -301,7 +305,7 @@
               <div>
                 <p class="section-kicker">数据管理</p>
                 <h2>数据备份</h2>
-                <p>数据保存在当前浏览器。建议每周导出一次完整备份。</p>
+                <p>数据以云端为准，同时建议每周导出一次完整备份。</p>
               </div>
             </div>
 
@@ -321,7 +325,7 @@
                 <div>
                   <p class="section-kicker">数据恢复</p>
                   <h3>导入 JSON 备份</h3>
-                  <p>导入后会覆盖当前浏览器中的数据，系统会在操作前再次确认。</p>
+                  <p>导入后会覆盖云端数据，系统会在操作前再次确认。</p>
                 </div>
                 <label class="button button-secondary file-button">
                   选择备份文件
@@ -344,7 +348,7 @@
                 <div>
                   <p class="section-kicker">谨慎操作</p>
                   <h3>清空全部数据</h3>
-                  <p>删除当前浏览器中的所有计划与数据，此操作无法撤销。</p>
+                  <p>删除云端的所有计划与数据，此操作无法撤销。</p>
                 </div>
                 <button class="button button-danger" id="clearDataButton">清空数据</button>
               </article>
@@ -353,7 +357,7 @@
             <article class="panel storage-panel">
               <div>
                 <p class="section-kicker">当前数据概览</p>
-                <h3>浏览器存储状态</h3>
+                <h3>云端数据状态</h3>
               </div>
               <div class="storage-stats" id="storageStats"></div>
             </article>
@@ -521,6 +525,6 @@
     </div>
 
     <div class="toast-region" id="toastRegion" aria-live="polite"></div>
-    <script src="app.js"></script>
+    <script src="app.js?v=1.1.0"></script>
   </body>
 </html>

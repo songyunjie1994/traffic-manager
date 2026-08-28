@@ -1,17 +1,26 @@
 "use strict";
 
 const STORAGE_KEY = "traffic_manager_data_v1";
-const APP_VERSION = "1.0.0";
+const APP_VERSION = "1.1.0";
+const CLOUD_ROW_ID = 2;
+const CLOUD_CONFIG = Object.freeze({
+  url: "https://mabxdkjqilulkrmqrrgo.supabase.co",
+  publishableKey: "sb_publishable_lfHpd1y1gCaQIDXfRkD_8w_O1bPMWGx",
+});
 const PLATFORMS = ["巨量引擎", "千川", "小红书", "视频号", "快手", "百度", "其他"];
 const VIEW_META = {
   dashboard: ["查看充值、消耗与账户余额汇总", "报表端"],
   campaigns: ["登记账户充值与到账状态", "充值端"],
   records: ["记录每日消耗和成交数据", "消耗端"],
-  backup: ["导出、恢复与管理本地数据", "数据备份"],
+  backup: ["导出、恢复与管理云端数据", "数据备份"],
 };
 
 let state = loadState();
 let confirmResolver = null;
+let cloudReady = false;
+let cloudInitializationPromise = null;
+let lastCloudSnapshot = "";
+let lastCloudRefreshAt = 0;
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
@@ -167,15 +176,153 @@ function loadState() {
     const saved = localStorage.getItem(STORAGE_KEY);
     if (saved) return normalizeState(JSON.parse(saved));
   } catch (error) {
-    console.warn("读取本地数据失败，已加载演示数据", error);
+    console.warn("读取本地缓存失败，已加载演示数据", error);
   }
   const demo = createDemoState();
   localStorage.setItem(STORAGE_KEY, JSON.stringify(demo));
   return demo;
 }
 
-function saveState() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+function cacheState(candidate = state) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(candidate));
+}
+
+function setCloudStatus(status, label) {
+  const indicator = $("#cloudSyncStatus");
+  const text = $("#cloudSyncText");
+  if (!indicator || !text) return;
+  indicator.dataset.state = status;
+  text.textContent = label;
+}
+
+function cloudHeaders(prefer = "") {
+  const headers = {
+    "Content-Type": "application/json",
+    apikey: CLOUD_CONFIG.publishableKey,
+    Authorization: `Bearer ${CLOUD_CONFIG.publishableKey}`,
+  };
+  if (prefer) headers.Prefer = prefer;
+  return headers;
+}
+
+async function fetchCloudState() {
+  const response = await fetch(`${CLOUD_CONFIG.url}/rest/v1/app_data?select=data&id=eq.${CLOUD_ROW_ID}`, {
+    headers: cloudHeaders(),
+    cache: "no-store",
+  });
+  if (!response.ok) throw new Error(`云端读取失败（${response.status}）`);
+  const rows = await response.json();
+  return rows[0]?.data ? normalizeState(rows[0].data) : null;
+}
+
+async function createCloudState(candidate) {
+  const migrated = normalizeState({
+    ...candidate,
+    settings: {
+      ...candidate.settings,
+      cloudInitializedAt: new Date().toISOString(),
+      cloudSource: "traffic-manager",
+    },
+  });
+  const response = await fetch(`${CLOUD_CONFIG.url}/rest/v1/app_data`, {
+    method: "POST",
+    headers: cloudHeaders("return=representation"),
+    body: JSON.stringify({ id: CLOUD_ROW_ID, data: migrated }),
+  });
+  if (response.status === 409) return (await fetchCloudState()) || migrated;
+  if (!response.ok) throw new Error(`云端初始化失败（${response.status}）`);
+  const rows = await response.json();
+  return rows[0]?.data ? normalizeState(rows[0].data) : migrated;
+}
+
+async function updateCloudState(candidate) {
+  const response = await fetch(`${CLOUD_CONFIG.url}/rest/v1/app_data?id=eq.${CLOUD_ROW_ID}`, {
+    method: "PATCH",
+    headers: cloudHeaders("return=minimal"),
+    body: JSON.stringify({ data: candidate }),
+  });
+  if (!response.ok) throw new Error(`云端保存失败（${response.status}）`);
+}
+
+async function initializeCloud() {
+  setCloudStatus("syncing", "正在连接云端");
+  try {
+    const cloudState = await fetchCloudState();
+    if (cloudState?.settings?.bootstrapPending) {
+      state = normalizeState({
+        ...state,
+        settings: {
+          ...state.settings,
+          bootstrapPending: false,
+          cloudInitializedAt: new Date().toISOString(),
+          cloudSource: "traffic-manager",
+        },
+      });
+      await updateCloudState(state);
+    } else {
+      state = cloudState || await createCloudState(state);
+    }
+    cloudReady = true;
+    cacheState(state);
+    lastCloudSnapshot = JSON.stringify(state);
+    lastCloudRefreshAt = Date.now();
+    setCloudStatus("synced", "云端已同步");
+    renderAll();
+    return true;
+  } catch (error) {
+    cloudReady = false;
+    lastCloudSnapshot = JSON.stringify(state);
+    setCloudStatus("offline", "云端连接失败");
+    console.error(error);
+    toast("云端连接失败，当前仅显示本地缓存，暂时不能修改数据", "error");
+    return false;
+  }
+}
+
+async function refreshCloudState() {
+  if (!cloudReady || Date.now() - lastCloudRefreshAt < 15000) return;
+  if ($$(".modal-backdrop:not(.hidden), .confirm-backdrop:not(.hidden)").length) return;
+  setCloudStatus("syncing", "正在刷新云端");
+  try {
+    const cloudState = await fetchCloudState();
+    if (!cloudState || cloudState.settings?.bootstrapPending) return;
+    state = cloudState;
+    cacheState(state);
+    lastCloudSnapshot = JSON.stringify(state);
+    lastCloudRefreshAt = Date.now();
+    setCloudStatus("synced", "云端已同步");
+    renderAll();
+  } catch (error) {
+    setCloudStatus("offline", "云端刷新失败");
+    console.error(error);
+  }
+}
+
+async function saveState() {
+  if (cloudInitializationPromise) await cloudInitializationPromise;
+  if (!cloudReady) {
+    if (lastCloudSnapshot) state = normalizeState(JSON.parse(lastCloudSnapshot));
+    renderAll();
+    toast("云端未连接，本次修改没有保存", "error");
+    return false;
+  }
+
+  setCloudStatus("syncing", "正在同步云端");
+  try {
+    await updateCloudState(state);
+    cacheState(state);
+    lastCloudSnapshot = JSON.stringify(state);
+    lastCloudRefreshAt = Date.now();
+    setCloudStatus("synced", "云端已同步");
+    return true;
+  } catch (error) {
+    if (lastCloudSnapshot) state = normalizeState(JSON.parse(lastCloudSnapshot));
+    setCloudStatus("offline", "云端保存失败");
+    console.error(error);
+    renderAll();
+    toast("云端保存失败，本次修改已回退", "error");
+    return false;
+  }
 }
 
 function markAsRealData() {
@@ -355,7 +502,7 @@ function renderDashboard() {
   $("#dashboardSummary").textContent = todayRecords.length || todayRecharges.length
     ? `${formatDate(date)}：充值 ${todayRecharges.length} 笔、消耗 ${todayRecords.length} 条，账户总余额 ${money(balance)}。`
     : `${formatDate(date)} 暂无充值和消耗数据，可前往对应业务端开始录入。`;
-  $("#dataModeBadge").textContent = state.demo ? "演示数据" : "本地数据";
+  $("#dataModeBadge").textContent = cloudReady ? (state.demo ? "云端演示数据" : "云端数据") : "本地缓存";
 
   renderTrend(date);
   renderAlerts(todayRecords, date);
@@ -702,7 +849,7 @@ function closeModal(id) {
   if (!$$(".modal-backdrop:not(.hidden), .confirm-backdrop:not(.hidden)").length) document.body.style.overflow = "";
 }
 
-function handleCampaignSubmit(event) {
+async function handleCampaignSubmit(event) {
   event.preventDefault();
   const id = $("#campaignId").value;
   const item = {
@@ -725,13 +872,13 @@ function handleCampaignSubmit(event) {
     state.campaigns.unshift(item);
   }
   markAsRealData();
-  saveState();
+  if (!(await saveState())) return;
   closeModal("campaignModal");
   renderAll();
   toast(id ? "账户/投流计划已更新" : "账户/投流计划已创建");
 }
 
-function handleRechargeSubmit(event) {
+async function handleRechargeSubmit(event) {
   event.preventDefault();
   const id = $("#rechargeId").value;
   const item = {
@@ -750,13 +897,13 @@ function handleRechargeSubmit(event) {
   if (id) state.recharges = state.recharges.map((recharge) => recharge.id === id ? item : recharge);
   else state.recharges.unshift(item);
   markAsRealData();
-  saveState();
+  if (!(await saveState())) return;
   closeModal("rechargeModal");
   renderAll();
   toast(id ? "充值记录已更新" : "充值记录已保存");
 }
 
-function handleRecordSubmit(event) {
+async function handleRecordSubmit(event) {
   event.preventDefault();
   const id = $("#recordId").value;
   const item = {
@@ -783,7 +930,7 @@ function handleRecordSubmit(event) {
     state.records.unshift(item);
   }
   markAsRealData();
-  saveState();
+  if (!(await saveState())) return;
   closeModal("recordModal");
   renderAll();
   toast(id ? "投流数据已更新" : "今日数据已保存");
@@ -831,7 +978,7 @@ async function deleteCampaign(id) {
   state.recharges = state.recharges.filter((item) => item.campaignId !== id);
   state.records = state.records.filter((item) => item.campaignId !== id);
   markAsRealData();
-  saveState();
+  if (!(await saveState())) return;
   renderAll();
   toast("账户/计划及关联数据已删除");
 }
@@ -841,7 +988,7 @@ async function deleteRecharge(id) {
   if (!confirmed) return;
   state.recharges = state.recharges.filter((item) => item.id !== id);
   markAsRealData();
-  saveState();
+  if (!(await saveState())) return;
   renderAll();
   toast("充值记录已删除");
 }
@@ -851,7 +998,7 @@ async function deleteRecord(id) {
   if (!confirmed) return;
   state.records = state.records.filter((item) => item.id !== id);
   markAsRealData();
-  saveState();
+  if (!(await saveState())) return;
   renderAll();
   toast("数据记录已删除");
 }
@@ -915,9 +1062,9 @@ async function importJson(file) {
     if (!confirmed) return;
     state = parsed;
     state.demo = false;
-    saveState();
+    if (!(await saveState())) return;
     renderAll();
-    toast("备份数据已恢复");
+    toast("备份数据已恢复到云端");
   } catch (error) {
     toast(error.message || "导入失败，请检查文件格式", "error");
   } finally {
@@ -995,20 +1142,24 @@ function bindEvents() {
   $("#exportCsvButton").addEventListener("click", exportCsv);
   $("#importJsonInput").addEventListener("change", (event) => importJson(event.target.files[0]));
   $("#resetDemoButton").addEventListener("click", async () => {
-    const confirmed = await askConfirm("恢复演示数据？", "当前浏览器中的数据将被演示计划和最近 7 天示例记录覆盖。", "恢复演示数据");
+    const confirmed = await askConfirm("恢复演示数据？", "云端数据将被演示计划和最近 7 天示例记录覆盖。", "恢复演示数据");
     if (!confirmed) return;
     state = createDemoState();
-    saveState();
+    if (!(await saveState())) return;
     renderAll();
-    toast("已恢复演示数据");
+    toast("云端已恢复演示数据");
   });
   $("#clearDataButton").addEventListener("click", async () => {
-    const confirmed = await askConfirm("清空全部数据？", "所有账户、充值记录和消耗数据都会从当前浏览器中删除，且无法恢复。建议先导出备份。", "确认清空");
+    const confirmed = await askConfirm("清空全部数据？", "所有云端账户、充值记录和消耗数据都会被删除，且无法恢复。建议先导出备份。", "确认清空");
     if (!confirmed) return;
     state = emptyState();
-    saveState();
+    if (!(await saveState())) return;
     renderAll();
-    toast("全部数据已清空");
+    toast("云端数据已清空");
+  });
+  window.addEventListener("focus", refreshCloudState);
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) refreshCloudState();
   });
 }
 
@@ -1020,6 +1171,7 @@ function initialize() {
   $("#recordEndDate").value = localDate();
   bindEvents();
   renderAll();
+  cloudInitializationPromise = initializeCloud();
 }
 
 initialize();

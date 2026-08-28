@@ -1803,6 +1803,38 @@ body::after {
   text-transform: none;
 }
 
+.cloud-sync-status {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  margin: 7px 0 0;
+  padding: 3px 9px;
+  color: rgba(255, 255, 255, 0.92);
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 999px;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.cloud-status-dot {
+  width: 7px;
+  height: 7px;
+  background: #fde68a;
+  border-radius: 50%;
+  box-shadow: 0 0 0 3px rgba(253, 230, 138, 0.16);
+}
+
+.cloud-sync-status[data-state="synced"] .cloud-status-dot {
+  background: #86efac;
+  box-shadow: 0 0 0 3px rgba(134, 239, 172, 0.16);
+}
+
+.cloud-sync-status[data-state="offline"] .cloud-status-dot {
+  background: #fca5a5;
+  box-shadow: 0 0 0 3px rgba(252, 165, 165, 0.16);
+}
+
 .menu-button,
 .topbar-actions {
   display: none !important;
