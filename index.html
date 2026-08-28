@@ -1,0 +1,519 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#f6f4ef" />
+    <meta
+      name="description"
+      content="一套部署在 GitHub Pages、数据保存在浏览器本地的投流管理系统。"
+    />
+    <title>流量罗盘 · 投流管理系统</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar" id="sidebar">
+        <div class="brand">
+          <div class="brand-mark" aria-hidden="true">
+            <svg viewBox="0 0 40 40" role="img">
+              <path d="M8 29.5 16.5 10l6 12 4.5-9L33 29.5H8Z" />
+              <circle cx="16.5" cy="10" r="3" />
+              <circle cx="27" cy="13" r="3" />
+            </svg>
+          </div>
+          <div>
+            <strong>流量罗盘</strong>
+            <span>投流管理系统</span>
+          </div>
+        </div>
+
+        <nav class="nav-list" aria-label="主导航">
+          <button class="nav-item" data-view="campaigns">
+            <span class="nav-icon" aria-hidden="true">＋</span>
+            充值端
+          </button>
+          <button class="nav-item" data-view="records">
+            <span class="nav-icon" aria-hidden="true">↗</span>
+            消耗端
+          </button>
+          <button class="nav-item active" data-view="dashboard">
+            <span class="nav-icon" aria-hidden="true">⌁</span>
+            报表端
+          </button>
+          <button class="nav-item" data-view="backup">
+            <span class="nav-icon" aria-hidden="true">⤓</span>
+            数据备份
+          </button>
+        </nav>
+
+        <div class="sidebar-note">
+          <span class="status-dot"></span>
+          <div>
+            <strong>本地安全存储</strong>
+            <p>数据仅保存在当前浏览器，请定期导出备份。</p>
+          </div>
+        </div>
+      </aside>
+
+      <main class="main-content">
+        <header class="topbar">
+          <div class="topbar-left">
+            <button class="icon-button menu-button" id="menuButton" aria-label="展开导航">☰</button>
+            <div>
+              <p class="eyebrow" id="viewEyebrow">REPORT CENTER</p>
+              <h1 id="viewTitle">报表端</h1>
+            </div>
+          </div>
+          <div class="topbar-actions">
+            <div class="date-control" title="看板统计日期">
+              <span aria-hidden="true">◷</span>
+              <input type="date" id="dashboardDate" aria-label="看板统计日期" />
+            </div>
+            <button class="button button-primary" id="quickRecordButton">
+              <span aria-hidden="true">＋</span> 录入今日数据
+            </button>
+          </div>
+        </header>
+
+        <div class="content-wrap">
+          <section class="view active" id="dashboardView">
+            <div class="welcome-row">
+              <div>
+                <p class="section-kicker">资金与投放全景</p>
+                <h2>充值、消耗、余额与回报，一张表看清。</h2>
+                <p id="dashboardSummary">正在汇总投流表现…</p>
+              </div>
+              <span class="data-mode-badge" id="dataModeBadge">演示数据</span>
+            </div>
+
+            <div class="kpi-grid" id="kpiGrid"></div>
+
+            <div class="dashboard-grid">
+              <article class="panel performance-panel">
+                <div class="panel-header">
+                  <div>
+                    <p class="section-kicker">7 日资金趋势</p>
+                    <h3>充值与消耗</h3>
+                  </div>
+                  <div class="chart-legend" aria-label="图例">
+                    <span><i class="legend-revenue"></i>充值</span>
+                    <span><i class="legend-spend"></i>消耗</span>
+                  </div>
+                </div>
+                <div class="chart-wrap">
+                  <svg id="trendChart" class="trend-chart" viewBox="0 0 760 270" role="img" aria-label="最近七天充值与消耗趋势"></svg>
+                </div>
+              </article>
+
+              <article class="panel action-panel">
+                <div class="panel-header">
+                  <div>
+                    <p class="section-kicker">优化提醒</p>
+                    <h3>今日待关注</h3>
+                  </div>
+                  <span class="count-pill" id="alertCount">0</span>
+                </div>
+                <div class="alert-list" id="alertList"></div>
+              </article>
+            </div>
+
+            <article class="panel ranking-panel">
+              <div class="panel-header">
+                <div>
+                  <p class="section-kicker">账户对账</p>
+                  <h3>账户资金与投放表现</h3>
+                </div>
+                <button class="text-button" data-jump-view="campaigns">去充值端 <span>→</span></button>
+              </div>
+              <div class="table-scroll">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>账户 / 投流计划</th>
+                      <th>平台</th>
+                      <th class="number-cell">累计充值</th>
+                      <th class="number-cell">累计消耗</th>
+                      <th class="number-cell">账户余额</th>
+                      <th class="number-cell">ROI</th>
+                      <th>状态</th>
+                    </tr>
+                  </thead>
+                  <tbody id="rankingTableBody"></tbody>
+                </table>
+              </div>
+            </article>
+          </section>
+
+          <section class="view" id="campaignsView">
+            <div class="section-toolbar">
+              <div>
+                <p class="section-kicker">RECHARGE CENTER</p>
+                <h2>充值端</h2>
+                <p>登记广告账户充值、到账状态、付款渠道与交易凭证。</p>
+              </div>
+              <div class="toolbar-actions">
+                <button class="button button-secondary" id="exportRechargeCsvButton">导出充值 CSV</button>
+                <button class="button button-primary" id="addRechargeButton">＋ 充值登记</button>
+              </div>
+            </div>
+
+            <div class="record-summary" id="rechargeSummary"></div>
+
+            <div class="filter-bar records-filter">
+              <label class="search-field">
+                <span aria-hidden="true">⌕</span>
+                <input type="search" id="rechargeSearch" placeholder="搜索账户、计划、流水号或经办人" />
+              </label>
+              <input type="date" id="rechargeStartDate" aria-label="充值开始日期" />
+              <span class="range-separator">至</span>
+              <input type="date" id="rechargeEndDate" aria-label="充值结束日期" />
+              <select id="rechargePlatformFilter" aria-label="按平台筛选">
+                <option value="all">全部平台</option>
+              </select>
+              <select id="rechargeStatusFilter" aria-label="按到账状态筛选">
+                <option value="all">全部状态</option>
+                <option value="已到账">已到账</option>
+                <option value="待确认">待确认</option>
+                <option value="已驳回">已驳回</option>
+              </select>
+            </div>
+
+            <article class="panel table-panel">
+              <div class="table-scroll">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>充值日期</th>
+                      <th>账户 / 投流计划</th>
+                      <th class="number-cell">充值金额</th>
+                      <th>付款渠道</th>
+                      <th>交易流水号</th>
+                      <th>经办人</th>
+                      <th>到账状态</th>
+                      <th class="action-cell">操作</th>
+                    </tr>
+                  </thead>
+                  <tbody id="rechargeTableBody"></tbody>
+                </table>
+              </div>
+              <div class="empty-state hidden" id="rechargeEmptyState">
+                <div class="empty-icon">＋</div>
+                <h3>当前范围没有充值记录</h3>
+                <p>调整筛选条件，或登记一笔新的账户充值。</p>
+              </div>
+            </article>
+
+            <div class="subsection-heading">
+              <div>
+                <p class="section-kicker">ACCOUNT CONFIGURATION</p>
+                <h3>广告账户与投流计划</h3>
+                <p>充值和消耗数据均会关联到这里配置的账户或计划。</p>
+              </div>
+              <button class="button button-secondary" id="addCampaignButton">＋ 新建账户/计划</button>
+            </div>
+
+            <div class="filter-bar">
+              <label class="search-field">
+                <span aria-hidden="true">⌕</span>
+                <input type="search" id="campaignSearch" placeholder="搜索计划、账户或负责人" />
+              </label>
+              <select id="campaignPlatformFilter" aria-label="按平台筛选"><option value="all">全部平台</option></select>
+              <select id="campaignStatusFilter" aria-label="按状态筛选">
+                <option value="all">全部状态</option>
+                <option value="投放中">投放中</option>
+                <option value="已暂停">已暂停</option>
+                <option value="已结束">已结束</option>
+              </select>
+            </div>
+
+            <article class="panel table-panel">
+              <div class="table-scroll"><table><thead><tr><th>账户 / 计划</th><th>平台 / 广告账户</th><th>投放目标</th><th class="number-cell">日预算</th><th class="number-cell">目标 ROI</th><th>负责人</th><th>状态</th><th class="action-cell">操作</th></tr></thead><tbody id="campaignTableBody"></tbody></table></div>
+              <div class="empty-state hidden" id="campaignEmptyState"><div class="empty-icon">◫</div><h3>还没有匹配的广告账户</h3><p>调整筛选条件，或新建一个账户/投流计划。</p></div>
+            </article>
+          </section>
+
+          <section class="view" id="recordsView">
+            <div class="section-toolbar">
+              <div>
+                <p class="section-kicker">SPEND CENTER</p>
+                <h2>消耗端</h2>
+                <p>记录各广告账户每日消耗、点击、订单与成交金额。</p>
+              </div>
+              <div class="toolbar-actions">
+                <button class="button button-secondary" id="exportCsvButton">导出 CSV</button>
+                <button class="button button-primary" id="addRecordButton">＋ 录入数据</button>
+              </div>
+            </div>
+
+            <div class="filter-bar records-filter">
+              <label class="search-field">
+                <span aria-hidden="true">⌕</span>
+                <input type="search" id="recordSearch" placeholder="搜索计划名称或备注" />
+              </label>
+              <input type="date" id="recordStartDate" aria-label="开始日期" />
+              <span class="range-separator">至</span>
+              <input type="date" id="recordEndDate" aria-label="结束日期" />
+              <select id="recordPlatformFilter" aria-label="按平台筛选">
+                <option value="all">全部平台</option>
+              </select>
+            </div>
+
+            <div class="record-summary" id="recordSummary"></div>
+
+            <article class="panel table-panel">
+              <div class="table-scroll">
+                <table class="records-table">
+                  <thead>
+                    <tr>
+                      <th>日期</th>
+                      <th>计划</th>
+                      <th class="number-cell">消耗</th>
+                      <th class="number-cell">展现</th>
+                      <th class="number-cell">点击</th>
+                      <th class="number-cell">成交</th>
+                      <th class="number-cell">订单</th>
+                      <th class="number-cell">ROI</th>
+                      <th class="number-cell">CPA</th>
+                      <th class="action-cell">操作</th>
+                    </tr>
+                  </thead>
+                  <tbody id="recordTableBody"></tbody>
+                </table>
+              </div>
+              <div class="empty-state hidden" id="recordEmptyState">
+                <div class="empty-icon">↗</div>
+                <h3>当前范围没有数据</h3>
+                <p>调整日期范围，或录入一条新的投流数据。</p>
+              </div>
+            </article>
+          </section>
+
+          <section class="view" id="backupView">
+            <div class="section-toolbar">
+              <div>
+                <p class="section-kicker">DATA CONTROL</p>
+                <h2>数据备份</h2>
+                <p>数据保存在当前浏览器。建议每周导出一次完整备份。</p>
+              </div>
+            </div>
+
+            <div class="backup-grid">
+              <article class="panel backup-card accent-card">
+                <span class="backup-icon">⇩</span>
+                <div>
+                  <p class="section-kicker">完整备份</p>
+                  <h3>导出 JSON 数据</h3>
+                  <p>包含全部投流计划、每日数据和系统设置，可用于完整恢复。</p>
+                </div>
+                <button class="button button-primary" id="exportJsonButton">下载备份文件</button>
+              </article>
+
+              <article class="panel backup-card">
+                <span class="backup-icon">⇧</span>
+                <div>
+                  <p class="section-kicker">数据恢复</p>
+                  <h3>导入 JSON 备份</h3>
+                  <p>导入后会覆盖当前浏览器中的数据，系统会在操作前再次确认。</p>
+                </div>
+                <label class="button button-secondary file-button">
+                  选择备份文件
+                  <input type="file" id="importJsonInput" accept="application/json,.json" />
+                </label>
+              </article>
+
+              <article class="panel backup-card">
+                <span class="backup-icon">◎</span>
+                <div>
+                  <p class="section-kicker">演示体验</p>
+                  <h3>恢复演示数据</h3>
+                  <p>重置为系统自带的示例计划和最近 7 天数据，便于快速体验。</p>
+                </div>
+                <button class="button button-secondary" id="resetDemoButton">恢复演示数据</button>
+              </article>
+
+              <article class="panel backup-card danger-card">
+                <span class="backup-icon">×</span>
+                <div>
+                  <p class="section-kicker">谨慎操作</p>
+                  <h3>清空全部数据</h3>
+                  <p>删除当前浏览器中的所有计划与数据，此操作无法撤销。</p>
+                </div>
+                <button class="button button-danger" id="clearDataButton">清空数据</button>
+              </article>
+            </div>
+
+            <article class="panel storage-panel">
+              <div>
+                <p class="section-kicker">当前数据概览</p>
+                <h3>浏览器存储状态</h3>
+              </div>
+              <div class="storage-stats" id="storageStats"></div>
+            </article>
+          </section>
+        </div>
+      </main>
+    </div>
+
+    <div class="modal-backdrop hidden" id="campaignModal" role="dialog" aria-modal="true" aria-labelledby="campaignModalTitle">
+      <form class="modal" id="campaignForm">
+        <div class="modal-header">
+          <div>
+            <p class="section-kicker">CAMPAIGN</p>
+            <h2 id="campaignModalTitle">新建账户/投流计划</h2>
+          </div>
+          <button type="button" class="icon-button modal-close" data-close-modal="campaignModal" aria-label="关闭">×</button>
+        </div>
+        <input type="hidden" id="campaignId" />
+        <div class="form-grid">
+          <label class="form-field span-2">
+            <span>账户/计划名称 *</span>
+            <input id="campaignName" required maxlength="60" placeholder="例如：夏季防晒新品放量" />
+          </label>
+          <label class="form-field">
+            <span>投放平台 *</span>
+            <select id="campaignPlatform" required></select>
+          </label>
+          <label class="form-field">
+            <span>广告账户</span>
+            <input id="campaignAccount" maxlength="50" placeholder="例如：巨量-品牌旗舰店" />
+          </label>
+          <label class="form-field">
+            <span>投放目标 *</span>
+            <select id="campaignObjective" required>
+              <option value="商品成交">商品成交</option>
+              <option value="直播间成交">直播间成交</option>
+              <option value="线索收集">线索收集</option>
+              <option value="品牌曝光">品牌曝光</option>
+              <option value="应用推广">应用推广</option>
+            </select>
+          </label>
+          <label class="form-field">
+            <span>日预算（元）*</span>
+            <input id="campaignBudget" type="number" min="0" step="0.01" required placeholder="3000" />
+          </label>
+          <label class="form-field">
+            <span>目标 ROI *</span>
+            <input id="campaignTargetRoi" type="number" min="0" step="0.01" required placeholder="2.50" />
+          </label>
+          <label class="form-field">
+            <span>负责人</span>
+            <input id="campaignOwner" maxlength="30" placeholder="姓名" />
+          </label>
+          <label class="form-field">
+            <span>开始日期 *</span>
+            <input id="campaignStartDate" type="date" required />
+          </label>
+          <label class="form-field">
+            <span>计划状态 *</span>
+            <select id="campaignStatus" required>
+              <option value="投放中">投放中</option>
+              <option value="已暂停">已暂停</option>
+              <option value="已结束">已结束</option>
+            </select>
+          </label>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="button button-ghost" data-close-modal="campaignModal">取消</button>
+          <button type="submit" class="button button-primary">保存计划</button>
+        </div>
+      </form>
+    </div>
+
+    <div class="modal-backdrop hidden" id="recordModal" role="dialog" aria-modal="true" aria-labelledby="recordModalTitle">
+      <form class="modal modal-wide" id="recordForm">
+        <div class="modal-header">
+          <div>
+            <p class="section-kicker">DAILY RECORD</p>
+            <h2 id="recordModalTitle">录入投流数据</h2>
+          </div>
+          <button type="button" class="icon-button modal-close" data-close-modal="recordModal" aria-label="关闭">×</button>
+        </div>
+        <input type="hidden" id="recordId" />
+        <div class="form-grid">
+          <label class="form-field">
+            <span>日期 *</span>
+            <input id="recordDate" type="date" required />
+          </label>
+          <label class="form-field span-2">
+            <span>投流计划 *</span>
+            <select id="recordCampaign" required></select>
+          </label>
+          <label class="form-field">
+            <span>消耗（元）*</span>
+            <input id="recordSpend" type="number" min="0" step="0.01" required placeholder="0.00" />
+          </label>
+          <label class="form-field">
+            <span>展现次数</span>
+            <input id="recordImpressions" type="number" min="0" step="1" placeholder="0" />
+          </label>
+          <label class="form-field">
+            <span>点击次数</span>
+            <input id="recordClicks" type="number" min="0" step="1" placeholder="0" />
+          </label>
+          <label class="form-field">
+            <span>线索数</span>
+            <input id="recordLeads" type="number" min="0" step="1" placeholder="0" />
+          </label>
+          <label class="form-field">
+            <span>订单数</span>
+            <input id="recordOrders" type="number" min="0" step="1" placeholder="0" />
+          </label>
+          <label class="form-field">
+            <span>成交金额（元）*</span>
+            <input id="recordRevenue" type="number" min="0" step="0.01" required placeholder="0.00" />
+          </label>
+          <label class="form-field span-3">
+            <span>备注</span>
+            <textarea id="recordNotes" maxlength="200" rows="3" placeholder="记录素材、定向、直播场次或异常情况"></textarea>
+          </label>
+        </div>
+        <div class="live-metrics" id="liveMetrics">
+          <span>预计 ROI <strong>0.00</strong></span>
+          <span>预计 CPC <strong>¥0.00</strong></span>
+          <span>预计 CPA <strong>¥0.00</strong></span>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="button button-ghost" data-close-modal="recordModal">取消</button>
+          <button type="submit" class="button button-primary">保存数据</button>
+        </div>
+      </form>
+    </div>
+
+    <div class="modal-backdrop hidden" id="rechargeModal" role="dialog" aria-modal="true" aria-labelledby="rechargeModalTitle">
+      <form class="modal" id="rechargeForm">
+        <div class="modal-header">
+          <div><p class="section-kicker">RECHARGE RECORD</p><h2 id="rechargeModalTitle">登记账户充值</h2></div>
+          <button type="button" class="icon-button modal-close" data-close-modal="rechargeModal" aria-label="关闭">×</button>
+        </div>
+        <input type="hidden" id="rechargeId" />
+        <div class="form-grid">
+          <label class="form-field"><span>充值日期 *</span><input id="rechargeDate" type="date" required /></label>
+          <label class="form-field span-2"><span>广告账户 / 投流计划 *</span><select id="rechargeCampaign" required></select></label>
+          <label class="form-field"><span>充值金额（元）*</span><input id="rechargeAmount" type="number" min="0.01" step="0.01" required placeholder="10000.00" /></label>
+          <label class="form-field"><span>付款渠道 *</span><select id="rechargeChannel" required><option value="对公转账">对公转账</option><option value="支付宝">支付宝</option><option value="微信支付">微信支付</option><option value="平台代理充值">平台代理充值</option><option value="其他">其他</option></select></label>
+          <label class="form-field"><span>到账状态 *</span><select id="rechargeStatus" required><option value="已到账">已到账</option><option value="待确认">待确认</option><option value="已驳回">已驳回</option></select></label>
+          <label class="form-field span-2"><span>交易流水号 / 充值单号</span><input id="rechargeReference" maxlength="80" placeholder="银行流水、平台充值单号等" /></label>
+          <label class="form-field"><span>经办人</span><input id="rechargeOperator" maxlength="30" placeholder="姓名" /></label>
+          <label class="form-field span-3"><span>备注</span><textarea id="rechargeNotes" maxlength="200" rows="3" placeholder="记录返点、代理商、到账差异等情况"></textarea></label>
+        </div>
+        <div class="modal-actions"><button type="button" class="button button-ghost" data-close-modal="rechargeModal">取消</button><button type="submit" class="button button-primary">保存充值记录</button></div>
+      </form>
+    </div>
+
+    <div class="confirm-backdrop hidden" id="confirmDialog" role="alertdialog" aria-modal="true" aria-labelledby="confirmTitle">
+      <div class="confirm-card">
+        <div class="confirm-symbol">!</div>
+        <h3 id="confirmTitle">确认操作</h3>
+        <p id="confirmMessage"></p>
+        <div class="modal-actions">
+          <button class="button button-ghost" id="confirmCancel">取消</button>
+          <button class="button button-danger" id="confirmAccept">确认</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="toast-region" id="toastRegion" aria-live="polite"></div>
+    <script src="app.js"></script>
+  </body>
+</html>
