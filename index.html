@@ -6,9 +6,9 @@
     <meta name="theme-color" content="#5747e8" />
     <meta
       name="description"
-      content="采用寄样管理系统视觉风格的充值、消耗与报表管理工作台。"
+      content="支持充值登记、消耗录入与投流报表的本地管理系统。"
     />
-    <title>寄样管理系统 · 资金投放工作台</title>
+    <title>投流管理系统</title>
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
@@ -43,10 +43,6 @@
             <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 19V11h3v8H5Zm5.5 0V5h3v14h-3Zm5.5 0v-6h3v6h-3Z" /></svg></span>
             报表端
           </button>
-          <button class="nav-item" data-view="backup">
-            <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 6.5C5 5.1 8.1 4 12 4s7 1.1 7 2.5-3.1 2.5-7 2.5-7-1.1-7-2.5Zm0 0V12c0 1.4 3.1 2.5 7 2.5M19 6.5V12M5 12v5.5C5 18.9 8.1 20 12 20m4-4v5m-2-2 2 2 2-2" /></svg></span>
-            数据备份
-          </button>
         </nav>
 
         <div class="sidebar-note">
@@ -62,9 +58,15 @@
         <header class="topbar">
           <div class="topbar-left">
             <button class="icon-button menu-button" id="menuButton" aria-label="展开导航">☰</button>
-            <div>
-              <p class="eyebrow" id="viewEyebrow">REPORT CENTER</p>
+            <div class="header-package-icon" aria-hidden="true">
+              <svg viewBox="0 0 48 48">
+                <path d="m8 15 16-8 16 8v18l-16 8-16-8V15Z" />
+                <path d="m8 15 16 9 16-9M24 24v17M16.5 11.3 32.5 20v8" />
+              </svg>
+            </div>
+            <div class="header-copy">
               <h1 id="viewTitle">报表端</h1>
+              <p class="eyebrow" id="viewEyebrow">查看充值、消耗与账户余额汇总</p>
             </div>
           </div>
           <div class="topbar-actions">
@@ -82,11 +84,14 @@
           <section class="view active" id="dashboardView">
             <div class="welcome-row">
               <div>
-                <p class="section-kicker">寄样式业务看板</p>
-                <h2>每笔充值与消耗，都像寄样单一样清楚。</h2>
+                <p class="section-kicker">数据概览</p>
+                <h2>充值、消耗与账户余额</h2>
                 <p id="dashboardSummary">正在汇总投流表现…</p>
               </div>
-              <span class="data-mode-badge" id="dataModeBadge">演示数据</span>
+              <div class="welcome-actions">
+                <span class="data-mode-badge" id="dataModeBadge">演示数据</span>
+                <button class="text-button" data-jump-view="backup">数据备份</button>
+              </div>
             </div>
 
             <div class="kpi-grid" id="kpiGrid"></div>
@@ -150,7 +155,7 @@
           <section class="view" id="campaignsView">
             <div class="section-toolbar">
               <div>
-                <p class="section-kicker">RECHARGE CENTER</p>
+                <p class="section-kicker">充值登记</p>
                 <h2>充值端</h2>
                 <p>登记广告账户充值、到账状态、付款渠道与交易凭证。</p>
               </div>
@@ -208,7 +213,7 @@
 
             <div class="subsection-heading">
               <div>
-                <p class="section-kicker">ACCOUNT CONFIGURATION</p>
+                <p class="section-kicker">账户配置</p>
                 <h3>广告账户与投流计划</h3>
                 <p>充值和消耗数据均会关联到这里配置的账户或计划。</p>
               </div>
@@ -238,7 +243,7 @@
           <section class="view" id="recordsView">
             <div class="section-toolbar">
               <div>
-                <p class="section-kicker">SPEND CENTER</p>
+                <p class="section-kicker">消耗登记</p>
                 <h2>消耗端</h2>
                 <p>记录各广告账户每日消耗、点击、订单与成交金额。</p>
               </div>
@@ -294,7 +299,7 @@
           <section class="view" id="backupView">
             <div class="section-toolbar">
               <div>
-                <p class="section-kicker">DATA CONTROL</p>
+                <p class="section-kicker">数据管理</p>
                 <h2>数据备份</h2>
                 <p>数据保存在当前浏览器。建议每周导出一次完整备份。</p>
               </div>
@@ -361,7 +366,7 @@
       <form class="modal" id="campaignForm">
         <div class="modal-header">
           <div>
-            <p class="section-kicker">CAMPAIGN</p>
+            <p class="section-kicker">账户配置</p>
             <h2 id="campaignModalTitle">新建账户/投流计划</h2>
           </div>
           <button type="button" class="icon-button modal-close" data-close-modal="campaignModal" aria-label="关闭">×</button>
@@ -426,7 +431,7 @@
       <form class="modal modal-wide" id="recordForm">
         <div class="modal-header">
           <div>
-            <p class="section-kicker">DAILY RECORD</p>
+            <p class="section-kicker">每日消耗</p>
             <h2 id="recordModalTitle">录入投流数据</h2>
           </div>
           <button type="button" class="icon-button modal-close" data-close-modal="recordModal" aria-label="关闭">×</button>
@@ -485,7 +490,7 @@
     <div class="modal-backdrop hidden" id="rechargeModal" role="dialog" aria-modal="true" aria-labelledby="rechargeModalTitle">
       <form class="modal" id="rechargeForm">
         <div class="modal-header">
-          <div><p class="section-kicker">RECHARGE RECORD</p><h2 id="rechargeModalTitle">登记账户充值</h2></div>
+          <div><p class="section-kicker">充值记录</p><h2 id="rechargeModalTitle">登记账户充值</h2></div>
           <button type="button" class="icon-button modal-close" data-close-modal="rechargeModal" aria-label="关闭">×</button>
         </div>
         <input type="hidden" id="rechargeId" />

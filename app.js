@@ -4,10 +4,10 @@ const STORAGE_KEY = "traffic_manager_data_v1";
 const APP_VERSION = "1.0.0";
 const PLATFORMS = ["巨量引擎", "千川", "小红书", "视频号", "快手", "百度", "其他"];
 const VIEW_META = {
-  dashboard: ["REPORT CENTER", "报表端"],
-  campaigns: ["RECHARGE CENTER", "充值端"],
-  records: ["SPEND CENTER", "消耗端"],
-  backup: ["DATA CONTROL", "数据备份"],
+  dashboard: ["查看充值、消耗与账户余额汇总", "报表端"],
+  campaigns: ["登记账户充值与到账状态", "充值端"],
+  records: ["记录每日消耗和成交数据", "消耗端"],
+  backup: ["导出、恢复与管理本地数据", "数据备份"],
 };
 
 let state = loadState();
