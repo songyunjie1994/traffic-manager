@@ -784,6 +784,27 @@ tbody tr:hover td { background: rgba(216, 240, 122, 0.08); }
 .status-badge-clickable:hover { filter: brightness(.95); }
 .status-badge-clickable:active { transform: scale(.96); }
 
+.recharge-board {
+  display: grid;
+  gap: 8px;
+  padding: 14px;
+}
+
+.board-row {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 11px 14px;
+  background: rgba(255, 253, 250, 0.72);
+  border: 1px solid rgba(220, 216, 206, 0.6);
+  border-radius: 10px;
+}
+
+.board-name { display: flex; align-items: baseline; gap: 8px; }
+.board-name strong { font-size: 14px; }
+.board-name span { color: var(--muted); font-size: 11px; }
+
 .roi-value {
   font-weight: 900;
 }
@@ -1460,6 +1481,8 @@ tbody tr:hover td {
 .status-badge.paused { color: #9a651d; background: #fff2d8; }
 .status-badge.ended { color: #717689; background: #eef0f4; }
 .status-badge.advanced { color: #a63a20; background: #fdece6; }
+
+.board-row { background: rgba(255, 255, 255, 0.06); border-color: rgba(255, 255, 255, 0.12); }
 
 .filter-bar,
 .summary-chip {

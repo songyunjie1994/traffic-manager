@@ -9,7 +9,7 @@
       content="以云端数据为主，支持充值登记、消耗录入与投流报表的管理系统。"
     />
     <title>投流管理系统</title>
-    <link rel="stylesheet" href="styles.css?v=1.1.0" />
+    <link rel="stylesheet" href="styles.css?v=1.2.0" />
   </head>
   <body>
     <div class="app-shell">
@@ -159,60 +159,14 @@
           <section class="view" id="campaignsView">
             <div class="section-toolbar">
               <div>
-                <p class="section-kicker">充值登记</p>
+                <p class="section-kicker">充值状态</p>
                 <h2>充值端</h2>
-                <p>登记广告账户充值、充值状态、付款渠道与交易凭证。</p>
+                <p>点击账户的状态标签，即可在 已充值 / 已付款 / 已垫款 之间切换。</p>
               </div>
-              <div class="toolbar-actions">
-                <button class="button button-secondary" id="exportRechargeCsvButton">导出充值 CSV</button>
-                <button class="button button-primary" id="addRechargeButton">＋ 充值登记</button>
-              </div>
-            </div>
-
-            <div class="record-summary" id="rechargeSummary"></div>
-
-            <div class="filter-bar records-filter">
-              <label class="search-field">
-                <span aria-hidden="true">⌕</span>
-                <input type="search" id="rechargeSearch" placeholder="搜索账户、计划、流水号或经办人" />
-              </label>
-              <input type="date" id="rechargeStartDate" aria-label="充值开始日期" />
-              <span class="range-separator">至</span>
-              <input type="date" id="rechargeEndDate" aria-label="充值结束日期" />
-              <select id="rechargePlatformFilter" aria-label="按平台筛选">
-                <option value="all">全部平台</option>
-              </select>
-              <select id="rechargeStatusFilter" aria-label="按充值状态筛选">
-                <option value="all">全部状态</option>
-                <option value="已充值">已充值</option>
-                <option value="已付款">已付款</option>
-                <option value="已垫款">已垫款</option>
-              </select>
             </div>
 
             <article class="panel table-panel">
-              <div class="table-scroll">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>充值日期</th>
-                      <th>账户 / 投流计划</th>
-                      <th class="number-cell">充值金额</th>
-                      <th>付款渠道</th>
-                      <th>交易流水号</th>
-                      <th>经办人</th>
-                      <th>充值状态</th>
-                      <th class="action-cell">操作</th>
-                    </tr>
-                  </thead>
-                  <tbody id="rechargeTableBody"></tbody>
-                </table>
-              </div>
-              <div class="empty-state hidden" id="rechargeEmptyState">
-                <div class="empty-icon">＋</div>
-                <h3>当前范围没有充值记录</h3>
-                <p>调整筛选条件，或登记一笔新的账户充值。登记后点击记录中的状态标签，可在 已充值 / 已付款 / 已垫款 之间切换。</p>
-              </div>
+              <div class="recharge-board" id="rechargeStatusBoard"></div>
             </article>
 
             <div class="subsection-heading">
@@ -488,27 +442,6 @@
           <button type="button" class="button button-ghost" data-close-modal="recordModal">取消</button>
           <button type="submit" class="button button-primary">保存数据</button>
         </div>
-      </form>
-    </div>
-
-    <div class="modal-backdrop hidden" id="rechargeModal" role="dialog" aria-modal="true" aria-labelledby="rechargeModalTitle">
-      <form class="modal" id="rechargeForm">
-        <div class="modal-header">
-          <div><p class="section-kicker">充值记录</p><h2 id="rechargeModalTitle">登记账户充值</h2></div>
-          <button type="button" class="icon-button modal-close" data-close-modal="rechargeModal" aria-label="关闭">×</button>
-        </div>
-        <input type="hidden" id="rechargeId" />
-        <div class="form-grid">
-          <label class="form-field"><span>充值日期 *</span><input id="rechargeDate" type="date" required /></label>
-          <label class="form-field span-2"><span>广告账户 / 投流计划 *</span><select id="rechargeCampaign" required></select></label>
-          <label class="form-field"><span>充值金额（元）*</span><input id="rechargeAmount" type="number" min="0.01" step="0.01" required placeholder="10000.00" /></label>
-          <label class="form-field"><span>付款渠道 *</span><select id="rechargeChannel" required><option value="对公转账">对公转账</option><option value="支付宝">支付宝</option><option value="微信支付">微信支付</option><option value="平台代理充值">平台代理充值</option><option value="其他">其他</option></select></label>
-          <label class="form-field"><span>充值状态 *</span><select id="rechargeStatus" required><option value="已充值">已充值</option><option value="已付款">已付款</option><option value="已垫款">已垫款</option></select></label>
-          <label class="form-field span-2"><span>交易流水号 / 充值单号</span><input id="rechargeReference" maxlength="80" placeholder="银行流水、平台充值单号等" /></label>
-          <label class="form-field"><span>经办人</span><input id="rechargeOperator" maxlength="30" placeholder="姓名" /></label>
-          <label class="form-field span-3"><span>备注</span><textarea id="rechargeNotes" maxlength="200" rows="3" placeholder="记录返点、代理商、到账差异等情况"></textarea></label>
-        </div>
-        <div class="modal-actions"><button type="button" class="button button-ghost" data-close-modal="rechargeModal">取消</button><button type="submit" class="button button-primary">保存充值记录</button></div>
       </form>
     </div>
 

@@ -1,7 +1,7 @@
 "use strict";
 
 const STORAGE_KEY = "traffic_manager_data_v1";
-const APP_VERSION = "1.1.0";
+const APP_VERSION = "1.2.0";
 const CLOUD_ROW_ID = 2;
 const CLOUD_CONFIG = Object.freeze({
   url: "https://mabxdkjqilulkrmqrrgo.supabase.co",
@@ -11,7 +11,7 @@ const PLATFORMS = ["巨量引擎", "千川", "小红书", "视频号", "快手",
 const RECHARGE_STATUSES = ["已充值", "已付款", "已垫款"];
 const VIEW_META = {
   dashboard: ["查看充值、消耗与账户余额汇总", "报表端"],
-  campaigns: ["登记账户充值与充值状态", "充值端"],
+  campaigns: ["点击状态标签即可切换充值状态", "充值端"],
   records: ["记录每日消耗和成交数据", "消耗端"],
   backup: ["导出、恢复与管理云端数据", "数据备份"],
 };
@@ -128,14 +128,7 @@ function createDemoState() {
     });
   });
 
-  const recharges = [
-    { id: "chg-001", date: localDate(-8), campaignId: "cmp-001", amount: 15000, channel: "对公转账", status: "已充值", reference: "PAY-DEMO-0820-001", operator: "林晓", notes: "月初预算充值", createdAt: new Date().toISOString() },
-    { id: "chg-002", date: localDate(-7), campaignId: "cmp-002", amount: 12000, channel: "平台代理充值", status: "已充值", reference: "AG-DEMO-0821-016", operator: "周楠", notes: "含代理返点", createdAt: new Date().toISOString() },
-    { id: "chg-003", date: localDate(-5), campaignId: "cmp-003", amount: 8000, channel: "支付宝", status: "已充值", reference: "ALI-DEMO-0823-008", operator: "陈然", notes: "", createdAt: new Date().toISOString() },
-    { id: "chg-004", date: localDate(-4), campaignId: "cmp-004", amount: 6000, channel: "微信支付", status: "已充值", reference: "WX-DEMO-0824-022", operator: "林晓", notes: "直播间专项预算", createdAt: new Date().toISOString() },
-    { id: "chg-005", date: localDate(), campaignId: "cmp-001", amount: 10000, channel: "对公转账", status: "已充值", reference: "PAY-DEMO-TODAY-003", operator: "林晓", notes: "追加预算", createdAt: new Date().toISOString() },
-    { id: "chg-006", date: localDate(), campaignId: "cmp-003", amount: 5000, channel: "支付宝", status: "已付款", reference: "ALI-DEMO-TODAY-011", operator: "陈然", notes: "等待平台开户确认", createdAt: new Date().toISOString() },
-  ];
+  const recharges = [];
 
   return {
     version: APP_VERSION,
@@ -417,7 +410,7 @@ function aggregateCampaignRecords(records) {
 function renderAll() {
   renderSelectOptions();
   renderDashboard();
-  renderRecharges();
+  renderRechargeBoard();
   renderCampaigns();
   renderRecords();
   renderBackup();
@@ -428,7 +421,7 @@ function renderSelectOptions() {
   $("#campaignPlatform").innerHTML = PLATFORMS.map((item) => `<option value="${escapeHtml(item)}">${escapeHtml(item)}</option>`).join("");
   if (PLATFORMS.includes(currentCampaignPlatform)) $("#campaignPlatform").value = currentCampaignPlatform;
 
-  ["#campaignPlatformFilter", "#recordPlatformFilter", "#rechargePlatformFilter"].forEach((selector) => {
+  ["#campaignPlatformFilter", "#recordPlatformFilter"].forEach((selector) => {
     const select = $(selector);
     const current = select.value;
     select.innerHTML = `<option value="all">全部平台</option>${PLATFORMS.map((item) => `<option value="${escapeHtml(item)}">${escapeHtml(item)}</option>`).join("")}`;
@@ -436,18 +429,12 @@ function renderSelectOptions() {
   });
 
   const recordSelect = $("#recordCampaign");
-  const rechargeSelect = $("#rechargeCampaign");
   const currentRecordCampaign = recordSelect.value;
-  const currentRechargeCampaign = rechargeSelect.value;
   const activeFirst = [...state.campaigns].sort((a, b) => (a.status === "投放中" ? -1 : 1) - (b.status === "投放中" ? -1 : 1));
   recordSelect.innerHTML = activeFirst.length
     ? activeFirst.map((item) => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.name)} · ${escapeHtml(item.platform)}</option>`).join("")
     : `<option value="">请先新建投流计划</option>`;
   if (state.campaigns.some((item) => item.id === currentRecordCampaign)) recordSelect.value = currentRecordCampaign;
-  rechargeSelect.innerHTML = activeFirst.length
-    ? activeFirst.map((item) => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.name)} · ${escapeHtml(item.platform)}</option>`).join("")
-    : `<option value="">请先新建广告账户/投流计划</option>`;
-  if (state.campaigns.some((item) => item.id === currentRechargeCampaign)) rechargeSelect.value = currentRechargeCampaign;
 }
 
 function renderDashboard() {
@@ -639,47 +626,23 @@ function campaignNameCell(campaign, subtitle) {
   </div>`;
 }
 
-function filteredRecharges() {
-  const query = $("#rechargeSearch").value.trim().toLowerCase();
-  const start = $("#rechargeStartDate").value;
-  const end = $("#rechargeEndDate").value;
-  const platform = $("#rechargePlatformFilter").value;
-  const status = $("#rechargeStatusFilter").value;
-  return state.recharges.filter((recharge) => {
-    const campaign = campaignById(recharge.campaignId);
-    const haystack = [campaign?.name, campaign?.account, recharge.reference, recharge.operator, recharge.notes].join(" ").toLowerCase();
-    return (!query || haystack.includes(query)) && (!start || recharge.date >= start) && (!end || recharge.date <= end) &&
-      (platform === "all" || campaign?.platform === platform) && (status === "all" || recharge.status === status);
-  }).sort((a, b) => b.date.localeCompare(a.date) || String(b.createdAt).localeCompare(String(a.createdAt)));
+function rechargeStatusBadge(campaign) {
+  const status = RECHARGE_STATUSES.includes(campaign.rechargeStatus) ? campaign.rechargeStatus : "已充值";
+  const className = status === "已付款" ? "paused" : status === "已垫款" ? "advanced" : "";
+  return `<button type="button" class="status-badge status-badge-clickable ${className}" data-action="cycle-campaign-recharge" data-id="${escapeHtml(campaign.id)}" title="点击切换：已充值 → 已付款 → 已垫款">${escapeHtml(status)}</button>`;
 }
 
-function renderRecharges() {
-  const rows = filteredRecharges();
-  const recharged = sum(rows.filter((item) => item.status === "已充值"), "amount");
-  const paid = sum(rows.filter((item) => item.status === "已付款"), "amount");
-  const advanced = sum(rows.filter((item) => item.status === "已垫款"), "amount");
-  const summary = [
-    ["已充值金额", money(recharged)],
-    ["已付款金额", money(paid)],
-    ["已垫款金额", money(advanced)],
-    ["充值笔数", `${rows.length} 笔`],
-  ];
-  $("#rechargeSummary").innerHTML = summary.map(([label, value]) => `<div class="summary-chip"><span>${label}</span><strong>${value}</strong></div>`).join("");
-  $("#rechargeTableBody").innerHTML = rows.map((recharge) => {
-    const campaign = campaignById(recharge.campaignId);
-    return `<tr>
-      <td>${formatDate(recharge.date)}</td>
-      <td>${campaign ? campaignNameCell(campaign, recharge.notes || campaign.account) : `<span>已删除的账户</span>`}</td>
-      <td class="number-cell"><strong>${money(recharge.amount, 2)}</strong></td>
-      <td>${escapeHtml(recharge.channel)}</td>
-      <td>${escapeHtml(recharge.reference || "—")}</td>
-      <td>${escapeHtml(recharge.operator || "—")}</td>
-      <td>${rechargeStatusBadge(recharge)}</td>
-      <td class="action-cell"><div class="table-actions"><button class="small-action" data-action="edit-recharge" data-id="${escapeHtml(recharge.id)}">编辑</button><button class="small-action delete" data-action="delete-recharge" data-id="${escapeHtml(recharge.id)}">删除</button></div></td>
-    </tr>`;
-  }).join("");
-  $("#rechargeEmptyState").classList.toggle("hidden", rows.length > 0);
-  $("#rechargeTableBody").closest(".table-scroll").classList.toggle("hidden", rows.length === 0);
+function renderRechargeBoard() {
+  const board = $("#rechargeStatusBoard");
+  if (!board) return;
+  board.innerHTML = state.campaigns.length
+    ? state.campaigns.map((campaign) => `
+        <div class="board-row">
+          <div class="board-name"><strong>${escapeHtml(campaign.name)}</strong><span>${escapeHtml(campaign.platform || "")}</span></div>
+          ${rechargeStatusBadge(campaign)}
+        </div>
+      `).join("")
+    : `<div class="empty-state"><div class="empty-icon">＋</div><h3>还没有账户</h3><p>在下方「账户配置」新建账户后，这里会出现对应的状态开关。</p></div>`;
 }
 
 function renderCampaigns() {
@@ -701,7 +664,6 @@ function renderCampaigns() {
       <td>${statusBadge(campaign.status)}</td>
       <td class="action-cell">
         <div class="table-actions">
-          <button class="small-action" data-action="recharge-campaign" data-id="${escapeHtml(campaign.id)}">充值</button>
           <button class="small-action" data-action="record-campaign" data-id="${escapeHtml(campaign.id)}">录数据</button>
           <button class="small-action" data-action="edit-campaign" data-id="${escapeHtml(campaign.id)}">编辑</button>
           <button class="small-action delete" data-action="delete-campaign" data-id="${escapeHtml(campaign.id)}">删除</button>
@@ -769,7 +731,7 @@ function renderBackup() {
   const dataBytes = new Blob([JSON.stringify(state)]).size;
   const stats = [
     ["账户/计划", `${state.campaigns.length} 个`],
-    ["充值/消耗", `${state.recharges.length}/${state.records.length} 条`],
+    ["消耗记录", `${state.records.length} 条`],
     ["占用空间", dataBytes < 1024 ? `${dataBytes} B` : `${(dataBytes / 1024).toFixed(1)} KB`],
   ];
   $("#storageStats").innerHTML = stats.map(([label, value]) => `<div class="storage-stat"><span>${label}</span><strong>${value}</strong></div>`).join("");
@@ -801,28 +763,6 @@ function openCampaignModal(campaign = null) {
   $("#campaignStatus").value = campaign?.status || "投放中";
   showModal("campaignModal");
   setTimeout(() => $("#campaignName").focus(), 60);
-}
-
-function openRechargeModal(recharge = null, campaignId = null) {
-  if (!state.campaigns.length) {
-    toast("请先新建一个广告账户/投流计划", "error");
-    switchView("campaigns");
-    openCampaignModal();
-    return;
-  }
-  $("#rechargeForm").reset();
-  $("#rechargeId").value = recharge?.id || "";
-  $("#rechargeModalTitle").textContent = recharge ? "编辑充值记录" : "登记账户充值";
-  $("#rechargeDate").value = recharge?.date || localDate();
-  $("#rechargeCampaign").value = recharge?.campaignId || campaignId || state.campaigns[0].id;
-  $("#rechargeAmount").value = recharge?.amount ?? "";
-  $("#rechargeChannel").value = recharge?.channel || "对公转账";
-  $("#rechargeStatus").value = recharge?.status || "已充值";
-  $("#rechargeReference").value = recharge?.reference || "";
-  $("#rechargeOperator").value = recharge?.operator || "";
-  $("#rechargeNotes").value = recharge?.notes || "";
-  showModal("rechargeModal");
-  setTimeout(() => $("#rechargeAmount").focus(), 60);
 }
 
 function openRecordModal(record = null, campaignId = null) {
@@ -872,6 +812,7 @@ async function handleCampaignSubmit(event) {
     owner: $("#campaignOwner").value.trim(),
     startDate: $("#campaignStartDate").value,
     status: $("#campaignStatus").value,
+    rechargeStatus: state.campaigns.find((campaign) => campaign.id === id)?.rechargeStatus || "已充值",
     createdAt: state.campaigns.find((campaign) => campaign.id === id)?.createdAt || new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   };
@@ -885,31 +826,6 @@ async function handleCampaignSubmit(event) {
   closeModal("campaignModal");
   renderAll();
   toast(id ? "账户/投流计划已更新" : "账户/投流计划已创建");
-}
-
-async function handleRechargeSubmit(event) {
-  event.preventDefault();
-  const id = $("#rechargeId").value;
-  const item = {
-    id: id || uid("chg"),
-    date: $("#rechargeDate").value,
-    campaignId: $("#rechargeCampaign").value,
-    amount: Number($("#rechargeAmount").value),
-    channel: $("#rechargeChannel").value,
-    status: $("#rechargeStatus").value,
-    reference: $("#rechargeReference").value.trim(),
-    operator: $("#rechargeOperator").value.trim(),
-    notes: $("#rechargeNotes").value.trim(),
-    createdAt: state.recharges.find((recharge) => recharge.id === id)?.createdAt || new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  };
-  if (id) state.recharges = state.recharges.map((recharge) => recharge.id === id ? item : recharge);
-  else state.recharges.unshift(item);
-  markAsRealData();
-  if (!(await saveState())) return;
-  closeModal("rechargeModal");
-  renderAll();
-  toast(id ? "充值记录已更新" : "充值记录已保存");
 }
 
 async function handleRecordSubmit(event) {
@@ -975,16 +891,13 @@ async function deleteCampaign(id) {
   const campaign = campaignById(id);
   if (!campaign) return;
   const spendCount = state.records.filter((record) => record.campaignId === id).length;
-  const rechargeCount = state.recharges.filter((recharge) => recharge.campaignId === id).length;
-  const linkedCount = spendCount + rechargeCount;
   const confirmed = await askConfirm(
     "删除投流计划？",
-    linkedCount ? `“${campaign.name}”关联了 ${rechargeCount} 条充值和 ${spendCount} 条消耗数据。删除账户时这些数据也会一并删除。` : `确认删除“${campaign.name}”吗？`,
+    spendCount ? `“${campaign.name}”关联了 ${spendCount} 条消耗数据。删除账户时这些数据也会一并删除。` : `确认删除“${campaign.name}”吗？`,
     "删除计划"
   );
   if (!confirmed) return;
   state.campaigns = state.campaigns.filter((item) => item.id !== id);
-  state.recharges = state.recharges.filter((item) => item.campaignId !== id);
   state.records = state.records.filter((item) => item.campaignId !== id);
   markAsRealData();
   if (!(await saveState())) return;
@@ -992,26 +905,16 @@ async function deleteCampaign(id) {
   toast("账户/计划及关联数据已删除");
 }
 
-async function cycleRechargeStatus(id) {
-  const recharge = state.recharges.find((item) => item.id === id);
-  if (!recharge) return;
-  const next = RECHARGE_STATUSES[(RECHARGE_STATUSES.indexOf(recharge.status) + 1) % RECHARGE_STATUSES.length];
-  recharge.status = next;
-  recharge.updatedAt = new Date().toISOString();
+async function cycleCampaignRechargeStatus(id) {
+  const campaign = campaignById(id);
+  if (!campaign) return;
+  const current = RECHARGE_STATUSES.includes(campaign.rechargeStatus) ? campaign.rechargeStatus : "已充值";
+  campaign.rechargeStatus = RECHARGE_STATUSES[(RECHARGE_STATUSES.indexOf(current) + 1) % RECHARGE_STATUSES.length];
+  campaign.updatedAt = new Date().toISOString();
   markAsRealData();
   if (!(await saveState())) return;
   renderAll();
-  toast(`充值状态已切换为「${next}」`);
-}
-
-async function deleteRecharge(id) {
-  const confirmed = await askConfirm("删除这笔充值？", "删除后将影响账户余额和报表汇总，此操作无法撤销。", "删除充值");
-  if (!confirmed) return;
-  state.recharges = state.recharges.filter((item) => item.id !== id);
-  markAsRealData();
-  if (!(await saveState())) return;
-  renderAll();
-  toast("充值记录已删除");
+  toast(`「${campaign.name}」已切换为「${campaign.rechargeStatus}」`);
 }
 
 async function deleteRecord(id) {
@@ -1064,22 +967,11 @@ function exportCsv() {
   toast(`已导出 ${rows.length} 条数据`);
 }
 
-function exportRechargeCsv() {
-  const rows = filteredRecharges();
-  const header = ["充值日期", "计划名称", "平台", "广告账户", "充值金额", "付款渠道", "充值状态", "交易流水号", "经办人", "备注"];
-  const dataRows = rows.map((recharge) => {
-    const campaign = campaignById(recharge.campaignId) || {};
-    return [recharge.date, campaign.name || "已删除的账户", campaign.platform || "", campaign.account || "", recharge.amount, recharge.channel, recharge.status, recharge.reference || "", recharge.operator || "", recharge.notes || ""].map(csvEscape).join(",");
-  });
-  downloadFile(`投流充值记录-${localDate()}.csv`, `\ufeff${header.join(",")}\n${dataRows.join("\n")}`, "text/csv;charset=utf-8");
-  toast(`已导出 ${rows.length} 笔充值记录`);
-}
-
 async function importJson(file) {
   if (!file) return;
   try {
     const parsed = normalizeState(JSON.parse(await file.text()));
-    const confirmed = await askConfirm("导入并覆盖当前数据？", `备份中包含 ${parsed.campaigns.length} 个账户、${parsed.recharges.length} 笔充值和 ${parsed.records.length} 条消耗。导入后当前数据会被覆盖。`, "确认导入");
+    const confirmed = await askConfirm("导入并覆盖当前数据？", `备份中包含 ${parsed.campaigns.length} 个账户和 ${parsed.records.length} 条消耗数据。导入后当前数据会被覆盖。`, "确认导入");
     if (!confirmed) return;
     state = parsed;
     state.demo = false;
@@ -1107,35 +999,27 @@ function bindEvents() {
   $("#menuButton").addEventListener("click", () => $("#sidebar").classList.toggle("open"));
   $("#dashboardDate").addEventListener("change", renderDashboard);
   $("#quickRecordButton").addEventListener("click", () => openRecordModal());
-  $("#addRechargeButton").addEventListener("click", () => openRechargeModal());
   $("#addCampaignButton").addEventListener("click", () => openCampaignModal());
   $("#addRecordButton").addEventListener("click", () => openRecordModal());
-  $("#rechargeForm").addEventListener("submit", handleRechargeSubmit);
   $("#campaignForm").addEventListener("submit", handleCampaignSubmit);
   $("#recordForm").addEventListener("submit", handleRecordSubmit);
   ["#recordSpend", "#recordClicks", "#recordOrders", "#recordRevenue"].forEach((selector) => $(selector).addEventListener("input", updateLiveMetrics));
 
   ["#campaignSearch", "#campaignPlatformFilter", "#campaignStatusFilter"].forEach((selector) => $(selector).addEventListener("input", renderCampaigns));
-  ["#rechargeSearch", "#rechargeStartDate", "#rechargeEndDate", "#rechargePlatformFilter", "#rechargeStatusFilter"].forEach((selector) => $(selector).addEventListener("input", renderRecharges));
   ["#recordSearch", "#recordStartDate", "#recordEndDate", "#recordPlatformFilter"].forEach((selector) => $(selector).addEventListener("input", renderRecords));
+
+  $("#rechargeStatusBoard").addEventListener("click", (event) => {
+    const button = event.target.closest("[data-action='cycle-campaign-recharge']");
+    if (button) cycleCampaignRechargeStatus(button.dataset.id);
+  });
 
   $("#campaignTableBody").addEventListener("click", (event) => {
     const button = event.target.closest("[data-action]");
     if (!button) return;
     const campaign = campaignById(button.dataset.id);
     if (button.dataset.action === "edit-campaign") openCampaignModal(campaign);
-    if (button.dataset.action === "recharge-campaign") openRechargeModal(null, button.dataset.id);
     if (button.dataset.action === "record-campaign") openRecordModal(null, button.dataset.id);
     if (button.dataset.action === "delete-campaign") deleteCampaign(button.dataset.id);
-  });
-
-  $("#rechargeTableBody").addEventListener("click", (event) => {
-    const button = event.target.closest("[data-action]");
-    if (!button) return;
-    const recharge = state.recharges.find((item) => item.id === button.dataset.id);
-    if (button.dataset.action === "cycle-recharge-status") cycleRechargeStatus(button.dataset.id);
-    if (button.dataset.action === "edit-recharge") openRechargeModal(recharge);
-    if (button.dataset.action === "delete-recharge") deleteRecharge(button.dataset.id);
   });
 
   $("#recordTableBody").addEventListener("click", (event) => {
@@ -1160,7 +1044,6 @@ function bindEvents() {
   $("#confirmCancel").addEventListener("click", () => resolveConfirm(false));
   $("#confirmAccept").addEventListener("click", () => resolveConfirm(true));
   $("#exportJsonButton").addEventListener("click", exportJson);
-  $("#exportRechargeCsvButton").addEventListener("click", exportRechargeCsv);
   $("#exportCsvButton").addEventListener("click", exportCsv);
   $("#importJsonInput").addEventListener("change", (event) => importJson(event.target.files[0]));
   $("#resetDemoButton").addEventListener("click", async () => {
@@ -1172,7 +1055,7 @@ function bindEvents() {
     toast("云端已恢复演示数据");
   });
   $("#clearDataButton").addEventListener("click", async () => {
-    const confirmed = await askConfirm("清空全部数据？", "所有云端账户、充值记录和消耗数据都会被删除，且无法恢复。建议先导出备份。", "确认清空");
+    const confirmed = await askConfirm("清空全部数据？", "所有云端账户和消耗数据都会被删除，且无法恢复。建议先导出备份。", "确认清空");
     if (!confirmed) return;
     state = emptyState();
     if (!(await saveState())) return;
@@ -1187,8 +1070,6 @@ function bindEvents() {
 
 function initialize() {
   $("#dashboardDate").value = localDate();
-  $("#rechargeStartDate").value = localDate(-30);
-  $("#rechargeEndDate").value = localDate();
   $("#recordStartDate").value = localDate(-6);
   $("#recordEndDate").value = localDate();
   bindEvents();
