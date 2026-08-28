@@ -8,9 +8,10 @@ const CLOUD_CONFIG = Object.freeze({
   publishableKey: "sb_publishable_lfHpd1y1gCaQIDXfRkD_8w_O1bPMWGx",
 });
 const PLATFORMS = ["巨量引擎", "千川", "小红书", "视频号", "快手", "百度", "其他"];
+const RECHARGE_STATUSES = ["已充值", "已付款", "已垫款"];
 const VIEW_META = {
   dashboard: ["查看充值、消耗与账户余额汇总", "报表端"],
-  campaigns: ["登记账户充值与到账状态", "充值端"],
+  campaigns: ["登记账户充值与充值状态", "充值端"],
   records: ["记录每日消耗和成交数据", "消耗端"],
   backup: ["导出、恢复与管理云端数据", "数据备份"],
 };
@@ -128,12 +129,12 @@ function createDemoState() {
   });
 
   const recharges = [
-    { id: "chg-001", date: localDate(-8), campaignId: "cmp-001", amount: 15000, channel: "对公转账", status: "已到账", reference: "PAY-DEMO-0820-001", operator: "林晓", notes: "月初预算充值", createdAt: new Date().toISOString() },
-    { id: "chg-002", date: localDate(-7), campaignId: "cmp-002", amount: 12000, channel: "平台代理充值", status: "已到账", reference: "AG-DEMO-0821-016", operator: "周楠", notes: "含代理返点", createdAt: new Date().toISOString() },
-    { id: "chg-003", date: localDate(-5), campaignId: "cmp-003", amount: 8000, channel: "支付宝", status: "已到账", reference: "ALI-DEMO-0823-008", operator: "陈然", notes: "", createdAt: new Date().toISOString() },
-    { id: "chg-004", date: localDate(-4), campaignId: "cmp-004", amount: 6000, channel: "微信支付", status: "已到账", reference: "WX-DEMO-0824-022", operator: "林晓", notes: "直播间专项预算", createdAt: new Date().toISOString() },
-    { id: "chg-005", date: localDate(), campaignId: "cmp-001", amount: 10000, channel: "对公转账", status: "已到账", reference: "PAY-DEMO-TODAY-003", operator: "林晓", notes: "追加预算", createdAt: new Date().toISOString() },
-    { id: "chg-006", date: localDate(), campaignId: "cmp-003", amount: 5000, channel: "支付宝", status: "待确认", reference: "ALI-DEMO-TODAY-011", operator: "陈然", notes: "等待平台开户确认", createdAt: new Date().toISOString() },
+    { id: "chg-001", date: localDate(-8), campaignId: "cmp-001", amount: 15000, channel: "对公转账", status: "已充值", reference: "PAY-DEMO-0820-001", operator: "林晓", notes: "月初预算充值", createdAt: new Date().toISOString() },
+    { id: "chg-002", date: localDate(-7), campaignId: "cmp-002", amount: 12000, channel: "平台代理充值", status: "已充值", reference: "AG-DEMO-0821-016", operator: "周楠", notes: "含代理返点", createdAt: new Date().toISOString() },
+    { id: "chg-003", date: localDate(-5), campaignId: "cmp-003", amount: 8000, channel: "支付宝", status: "已充值", reference: "ALI-DEMO-0823-008", operator: "陈然", notes: "", createdAt: new Date().toISOString() },
+    { id: "chg-004", date: localDate(-4), campaignId: "cmp-004", amount: 6000, channel: "微信支付", status: "已充值", reference: "WX-DEMO-0824-022", operator: "林晓", notes: "直播间专项预算", createdAt: new Date().toISOString() },
+    { id: "chg-005", date: localDate(), campaignId: "cmp-001", amount: 10000, channel: "对公转账", status: "已充值", reference: "PAY-DEMO-TODAY-003", operator: "林晓", notes: "追加预算", createdAt: new Date().toISOString() },
+    { id: "chg-006", date: localDate(), campaignId: "cmp-003", amount: 5000, channel: "支付宝", status: "已付款", reference: "ALI-DEMO-TODAY-011", operator: "陈然", notes: "等待平台开户确认", createdAt: new Date().toISOString() },
   ];
 
   return {
@@ -386,6 +387,11 @@ function statusBadge(status) {
   return `<span class="status-badge ${className}">${escapeHtml(status)}</span>`;
 }
 
+function rechargeStatusBadge(recharge) {
+  const className = recharge.status === "已付款" ? "paused" : recharge.status === "已垫款" ? "advanced" : "";
+  return `<button type="button" class="status-badge status-badge-clickable ${className}" data-action="cycle-recharge-status" data-id="${escapeHtml(recharge.id)}" title="点击切换：已充值 → 已付款 → 已垫款">${escapeHtml(recharge.status)}</button>`;
+}
+
 function campaignById(id) {
   return state.campaigns.find((item) => item.id === id);
 }
@@ -450,11 +456,12 @@ function renderDashboard() {
   const previousRecords = recordsForDate(offsetDate(date, -1));
   const todayRecharges = state.recharges.filter((item) => item.date === date);
   const previousRecharges = state.recharges.filter((item) => item.date === offsetDate(date, -1));
-  const cumulativeRecharges = state.recharges.filter((item) => item.date <= date && item.status === "已到账");
+  const cumulativeRecharges = state.recharges.filter((item) => item.date <= date && item.status === "已充值");
   const cumulativeRecords = state.records.filter((item) => item.date <= date);
-  const recharge = sum(todayRecharges.filter((item) => item.status === "已到账"), "amount");
-  const previousRecharge = sum(previousRecharges.filter((item) => item.status === "已到账"), "amount");
-  const pendingRecharge = sum(todayRecharges.filter((item) => item.status === "待确认"), "amount");
+  const recharge = sum(todayRecharges.filter((item) => item.status === "已充值"), "amount");
+  const previousRecharge = sum(previousRecharges.filter((item) => item.status === "已充值"), "amount");
+  const paidRecharge = sum(todayRecharges.filter((item) => item.status === "已付款"), "amount");
+  const advancedRecharge = sum(todayRecharges.filter((item) => item.status === "已垫款"), "amount");
   const spend = sum(todayRecords, "spend");
   const revenue = sum(todayRecords, "revenue");
   const orders = sum(todayRecords, "orders");
@@ -466,10 +473,12 @@ function renderDashboard() {
 
   const cards = [
     {
-      label: "当日到账充值",
+      label: "当日充值（已充值）",
       icon: "+",
       value: money(recharge),
-      note: pendingRecharge ? `<span class="trend-down">待确认 ${money(pendingRecharge)}</span>` : trendNote(recharge, previousRecharge, "较前一日"),
+      note: paidRecharge || advancedRecharge
+        ? [paidRecharge ? `<span class="trend-down">已付款 ${money(paidRecharge)}</span>` : "", advancedRecharge ? `<span class="trend-down">已垫款 ${money(advancedRecharge)}</span>` : ""].filter(Boolean).join(" ")
+        : trendNote(recharge, previousRecharge, "较前一日"),
     },
     {
       label: "当日消耗",
@@ -527,7 +536,7 @@ function renderTrend(endDate) {
   const days = Array.from({ length: 7 }, (_, index) => offsetDate(endDate, index - 6));
   const points = days.map((date) => {
     const rows = recordsForDate(date);
-    const recharges = state.recharges.filter((item) => item.date === date && item.status === "已到账");
+    const recharges = state.recharges.filter((item) => item.date === date && item.status === "已充值");
     return { date, spend: sum(rows, "spend"), recharge: sum(recharges, "amount") };
   });
   const svg = $("#trendChart");
@@ -571,7 +580,7 @@ function renderAlerts(records, date) {
   const alerts = [];
   state.campaigns.filter((item) => item.status === "投放中").forEach((campaign) => {
     const metrics = grouped.get(campaign.id);
-    const accountRecharge = sum(state.recharges.filter((item) => item.campaignId === campaign.id && item.date <= date && item.status === "已到账"), "amount");
+    const accountRecharge = sum(state.recharges.filter((item) => item.campaignId === campaign.id && item.date <= date && item.status === "已充值"), "amount");
     const accountSpend = sum(state.records.filter((item) => item.campaignId === campaign.id && item.date <= date), "spend");
     const accountBalance = accountRecharge - accountSpend;
     if (accountBalance < campaign.dailyBudget * 0.5) {
@@ -604,7 +613,7 @@ function renderRanking(records, date) {
   const grouped = aggregateCampaignRecords(records);
   const rows = state.campaigns.map((campaign) => {
     const metrics = grouped.get(campaign.id) || { spend: 0, revenue: 0, orders: 0 };
-    const recharge = sum(state.recharges.filter((item) => item.campaignId === campaign.id && item.date <= date && item.status === "已到账"), "amount");
+    const recharge = sum(state.recharges.filter((item) => item.campaignId === campaign.id && item.date <= date && item.status === "已充值"), "amount");
     const cumulativeSpend = sum(state.records.filter((item) => item.campaignId === campaign.id && item.date <= date), "spend");
     return { campaign, recharge, cumulativeSpend, balance: recharge - cumulativeSpend, roi: ratio(metrics.revenue, metrics.spend) };
   }).sort((a, b) => b.cumulativeSpend - a.cumulativeSpend);
@@ -646,13 +655,13 @@ function filteredRecharges() {
 
 function renderRecharges() {
   const rows = filteredRecharges();
-  const arrived = sum(rows.filter((item) => item.status === "已到账"), "amount");
-  const pending = sum(rows.filter((item) => item.status === "待确认"), "amount");
-  const rejected = sum(rows.filter((item) => item.status === "已驳回"), "amount");
+  const recharged = sum(rows.filter((item) => item.status === "已充值"), "amount");
+  const paid = sum(rows.filter((item) => item.status === "已付款"), "amount");
+  const advanced = sum(rows.filter((item) => item.status === "已垫款"), "amount");
   const summary = [
-    ["筛选范围已到账", money(arrived)],
-    ["待确认金额", money(pending)],
-    ["已驳回金额", money(rejected)],
+    ["已充值金额", money(recharged)],
+    ["已付款金额", money(paid)],
+    ["已垫款金额", money(advanced)],
     ["充值笔数", `${rows.length} 笔`],
   ];
   $("#rechargeSummary").innerHTML = summary.map(([label, value]) => `<div class="summary-chip"><span>${label}</span><strong>${value}</strong></div>`).join("");
@@ -665,7 +674,7 @@ function renderRecharges() {
       <td>${escapeHtml(recharge.channel)}</td>
       <td>${escapeHtml(recharge.reference || "—")}</td>
       <td>${escapeHtml(recharge.operator || "—")}</td>
-      <td>${statusBadge(recharge.status)}</td>
+      <td>${rechargeStatusBadge(recharge)}</td>
       <td class="action-cell"><div class="table-actions"><button class="small-action" data-action="edit-recharge" data-id="${escapeHtml(recharge.id)}">编辑</button><button class="small-action delete" data-action="delete-recharge" data-id="${escapeHtml(recharge.id)}">删除</button></div></td>
     </tr>`;
   }).join("");
@@ -808,7 +817,7 @@ function openRechargeModal(recharge = null, campaignId = null) {
   $("#rechargeCampaign").value = recharge?.campaignId || campaignId || state.campaigns[0].id;
   $("#rechargeAmount").value = recharge?.amount ?? "";
   $("#rechargeChannel").value = recharge?.channel || "对公转账";
-  $("#rechargeStatus").value = recharge?.status || "已到账";
+  $("#rechargeStatus").value = recharge?.status || "已充值";
   $("#rechargeReference").value = recharge?.reference || "";
   $("#rechargeOperator").value = recharge?.operator || "";
   $("#rechargeNotes").value = recharge?.notes || "";
@@ -983,6 +992,18 @@ async function deleteCampaign(id) {
   toast("账户/计划及关联数据已删除");
 }
 
+async function cycleRechargeStatus(id) {
+  const recharge = state.recharges.find((item) => item.id === id);
+  if (!recharge) return;
+  const next = RECHARGE_STATUSES[(RECHARGE_STATUSES.indexOf(recharge.status) + 1) % RECHARGE_STATUSES.length];
+  recharge.status = next;
+  recharge.updatedAt = new Date().toISOString();
+  markAsRealData();
+  if (!(await saveState())) return;
+  renderAll();
+  toast(`充值状态已切换为「${next}」`);
+}
+
 async function deleteRecharge(id) {
   const confirmed = await askConfirm("删除这笔充值？", "删除后将影响账户余额和报表汇总，此操作无法撤销。", "删除充值");
   if (!confirmed) return;
@@ -1045,7 +1066,7 @@ function exportCsv() {
 
 function exportRechargeCsv() {
   const rows = filteredRecharges();
-  const header = ["充值日期", "计划名称", "平台", "广告账户", "充值金额", "付款渠道", "到账状态", "交易流水号", "经办人", "备注"];
+  const header = ["充值日期", "计划名称", "平台", "广告账户", "充值金额", "付款渠道", "充值状态", "交易流水号", "经办人", "备注"];
   const dataRows = rows.map((recharge) => {
     const campaign = campaignById(recharge.campaignId) || {};
     return [recharge.date, campaign.name || "已删除的账户", campaign.platform || "", campaign.account || "", recharge.amount, recharge.channel, recharge.status, recharge.reference || "", recharge.operator || "", recharge.notes || ""].map(csvEscape).join(",");
@@ -1112,6 +1133,7 @@ function bindEvents() {
     const button = event.target.closest("[data-action]");
     if (!button) return;
     const recharge = state.recharges.find((item) => item.id === button.dataset.id);
+    if (button.dataset.action === "cycle-recharge-status") cycleRechargeStatus(button.dataset.id);
     if (button.dataset.action === "edit-recharge") openRechargeModal(recharge);
     if (button.dataset.action === "delete-recharge") deleteRecharge(button.dataset.id);
   });

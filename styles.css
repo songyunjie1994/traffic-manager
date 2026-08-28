@@ -772,6 +772,17 @@ tbody tr:hover td { background: rgba(216, 240, 122, 0.08); }
 
 .status-badge.paused { color: #956122; background: #fbefd7; }
 .status-badge.ended { color: #69716e; background: #e9eceb; }
+.status-badge.advanced { color: #a63a20; background: #fbe5dc; }
+
+.status-badge-clickable {
+  cursor: pointer;
+  border: 0;
+  font: inherit;
+  transition: filter .15s ease, transform .1s ease;
+}
+
+.status-badge-clickable:hover { filter: brightness(.95); }
+.status-badge-clickable:active { transform: scale(.96); }
 
 .roi-value {
   font-weight: 900;
@@ -1448,6 +1459,7 @@ tbody tr:hover td {
 
 .status-badge.paused { color: #9a651d; background: #fff2d8; }
 .status-badge.ended { color: #717689; background: #eef0f4; }
+.status-badge.advanced { color: #a63a20; background: #fdece6; }
 
 .filter-bar,
 .summary-chip {

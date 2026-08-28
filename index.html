@@ -161,7 +161,7 @@
               <div>
                 <p class="section-kicker">充值登记</p>
                 <h2>充值端</h2>
-                <p>登记广告账户充值、到账状态、付款渠道与交易凭证。</p>
+                <p>登记广告账户充值、充值状态、付款渠道与交易凭证。</p>
               </div>
               <div class="toolbar-actions">
                 <button class="button button-secondary" id="exportRechargeCsvButton">导出充值 CSV</button>
@@ -182,11 +182,11 @@
               <select id="rechargePlatformFilter" aria-label="按平台筛选">
                 <option value="all">全部平台</option>
               </select>
-              <select id="rechargeStatusFilter" aria-label="按到账状态筛选">
+              <select id="rechargeStatusFilter" aria-label="按充值状态筛选">
                 <option value="all">全部状态</option>
-                <option value="已到账">已到账</option>
-                <option value="待确认">待确认</option>
-                <option value="已驳回">已驳回</option>
+                <option value="已充值">已充值</option>
+                <option value="已付款">已付款</option>
+                <option value="已垫款">已垫款</option>
               </select>
             </div>
 
@@ -201,7 +201,7 @@
                       <th>付款渠道</th>
                       <th>交易流水号</th>
                       <th>经办人</th>
-                      <th>到账状态</th>
+                      <th>充值状态</th>
                       <th class="action-cell">操作</th>
                     </tr>
                   </thead>
@@ -211,7 +211,7 @@
               <div class="empty-state hidden" id="rechargeEmptyState">
                 <div class="empty-icon">＋</div>
                 <h3>当前范围没有充值记录</h3>
-                <p>调整筛选条件，或登记一笔新的账户充值。</p>
+                <p>调整筛选条件，或登记一笔新的账户充值。登记后点击记录中的状态标签，可在 已充值 / 已付款 / 已垫款 之间切换。</p>
               </div>
             </article>
 
@@ -503,7 +503,7 @@
           <label class="form-field span-2"><span>广告账户 / 投流计划 *</span><select id="rechargeCampaign" required></select></label>
           <label class="form-field"><span>充值金额（元）*</span><input id="rechargeAmount" type="number" min="0.01" step="0.01" required placeholder="10000.00" /></label>
           <label class="form-field"><span>付款渠道 *</span><select id="rechargeChannel" required><option value="对公转账">对公转账</option><option value="支付宝">支付宝</option><option value="微信支付">微信支付</option><option value="平台代理充值">平台代理充值</option><option value="其他">其他</option></select></label>
-          <label class="form-field"><span>到账状态 *</span><select id="rechargeStatus" required><option value="已到账">已到账</option><option value="待确认">待确认</option><option value="已驳回">已驳回</option></select></label>
+          <label class="form-field"><span>充值状态 *</span><select id="rechargeStatus" required><option value="已充值">已充值</option><option value="已付款">已付款</option><option value="已垫款">已垫款</option></select></label>
           <label class="form-field span-2"><span>交易流水号 / 充值单号</span><input id="rechargeReference" maxlength="80" placeholder="银行流水、平台充值单号等" /></label>
           <label class="form-field"><span>经办人</span><input id="rechargeOperator" maxlength="30" placeholder="姓名" /></label>
           <label class="form-field span-3"><span>备注</span><textarea id="rechargeNotes" maxlength="200" rows="3" placeholder="记录返点、代理商、到账差异等情况"></textarea></label>
