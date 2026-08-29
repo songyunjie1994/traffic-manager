@@ -1,7 +1,7 @@
 "use strict";
 
 const STORAGE_KEY = "traffic_manager_data_v1";
-const APP_VERSION = "1.3.2";
+const APP_VERSION = "1.4.0";
 const CLOUD_ROW_ID = 2;
 const RECHARGE_WORKFLOW_VERSION = "2026-08-29-v1";
 const REQUIRED_ACCOUNT_NAMES = ["杭州夕雾", "MELBOURNE", "江西井意", "浏阳市关口韵帆", "ISAMORVAN", "研汁工社"];
@@ -10,11 +10,12 @@ const RECHARGE_LEDGER_META = Object.freeze({
   payment: { title: "付款记录", dateLabel: "付款日期", accountLabel: "付款账户", amountLabel: "付款金额", addLabel: "＋ 上传付款截图" },
   pending: { title: "待付款", dateLabel: "登记日期", accountLabel: "待付款账户", amountLabel: "待付金额", addLabel: "" },
 });
-const PAYMENT_OCR_ASSETS = Object.freeze({
-  workerPath: "https://songyunjie1994.github.io/payment-manager/ocr/worker.min.js",
-  corePath: "https://songyunjie1994.github.io/payment-manager/ocr/core",
-  langPath: "https://songyunjie1994.github.io/payment-manager/ocr/lang",
+const ZHIPU_VISION_CONFIG = Object.freeze({
+  endpoint: "https://open.bigmodel.cn/api/paas/v4/chat/completions",
+  model: "glm-4v-flash",
+  keyStorageKey: "traffic_manager_zhipu_api_key",
 });
+const VISION_PROMPT = "这是付款或转账截图。请识别并只输出一个 JSON 对象，不要输出任何其他文字：{\"date\":\"YYYY-MM-DD\",\"amount\":数字,\"party\":\"对方名称\"}。date 填截图中的交易日期（没有则填空字符串）；amount 填付款金额的纯数字，不含单位和千分位逗号；party 填截图中最能代表对方账户或商户的名称（没有则填空字符串）。";
 const CLOUD_CONFIG = Object.freeze({
   url: "https://mabxdkjqilulkrmqrrgo.supabase.co",
   publishableKey: "sb_publishable_lfHpd1y1gCaQIDXfRkD_8w_O1bPMWGx",
@@ -35,8 +36,6 @@ let lastCloudSnapshot = "";
 let lastCloudRefreshAt = 0;
 let activeRechargeLedger = "recharge";
 let paymentOcrResult = null;
-let paymentOcrWorkerPromise = null;
-let paymentOcrReady = false;
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
@@ -733,40 +732,6 @@ function matchCampaignFromReceipt(text) {
   }) || null;
 }
 
-function parsePaymentReceipt(text, confidence = 0) {
-  const flattened = String(text || "").replace(/\s+/g, " ")
-    .replace(/(\d)\s*,\s*(\d)/g, "$1,$2")
-    .replace(/(\d)\s*\.\s*(\d)/g, "$1.$2");
-  let amount = 0;
-  let date = "";
-  let match;
-  const amountPatterns = [
-    /(?:实付|付款金额|支付金额|订单金额|充值金额|转账金额|交易金额|金额)[^\d¥￥]{0,8}(?:CNY|RMB|人民币)?[¥￥]?\s*([\d,]+(?:\.\d{1,2})?)/i,
-    /(?:CNY|RMB|人民币)\s*[¥￥]?\s*([\d,]+(?:\.\d{1,2})?)/i,
-    /[¥￥]\s*([\d,]+(?:\.\d{1,2})?)/,
-    /([\d,]+\.\d{2})\s*元/,
-  ];
-  for (const pattern of amountPatterns) {
-    match = flattened.match(pattern);
-    if (match) {
-      amount = Number(match[1].replaceAll(",", ""));
-      break;
-    }
-  }
-  if (!amount) {
-    const decimalAmounts = [...flattened.matchAll(/(?:^|[^\d])([1-9]\d{0,6}(?:,\d{3})*(?:\.\d{2}))(?!\d)/g)]
-      .map((item) => Number(item[1].replaceAll(",", "")))
-      .filter((value) => Number.isFinite(value) && value > 0);
-    amount = decimalAmounts.sort((a, b) => b - a)[0] || 0;
-  }
-  match = flattened.match(/(20\d{2})[-/年.]\s*(\d{1,2})[-/月.]\s*(\d{1,2})/);
-  if (match) date = `${match[1]}-${String(match[2]).padStart(2, "0")}-${String(match[3]).padStart(2, "0")}`;
-  if (!date) {
-    match = flattened.match(/(?:^|\D)(\d{1,2})[-/月.]\s*(\d{1,2})(?:日|\D)/);
-    if (match) date = `${new Date().getFullYear()}-${String(match[1]).padStart(2, "0")}-${String(match[2]).padStart(2, "0")}`;
-  }
-  return { date: date || localDate(), amount, campaign: matchCampaignFromReceipt(text), confidence: Math.round(Number(confidence || 0)) };
-}
 
 function setPaymentOcrStatus(message, progress = 0, stateName = "working") {
   const status = $("#paymentOcrStatus");
@@ -778,46 +743,74 @@ function setPaymentOcrStatus(message, progress = 0, stateName = "working") {
   $("#paymentOcrProgress").style.width = `${percent}%`;
 }
 
-function getPaymentOcrWorker() {
-  if (paymentOcrWorkerPromise) return paymentOcrWorkerPromise;
-  paymentOcrWorkerPromise = window.Tesseract.createWorker("chi_sim", 1, {
-    workerPath: PAYMENT_OCR_ASSETS.workerPath,
-    corePath: PAYMENT_OCR_ASSETS.corePath,
-    langPath: PAYMENT_OCR_ASSETS.langPath,
-    gzip: false,
-    logger: (message) => {
-      const phase = String(message.status || "");
-      const phaseProgress = Number(message.progress || 0);
-      if (phase.includes("tesseract core")) {
-        setPaymentOcrStatus("正在加载识别引擎（首次约需 30–90 秒）…", 0.08 + phaseProgress * 0.18);
-      } else if (phase.includes("language traineddata")) {
-        setPaymentOcrStatus("正在加载中文识别模型…", 0.26 + phaseProgress * 0.36);
-      } else if (phase.includes("initializing")) {
-        setPaymentOcrStatus("正在准备本地识别…", 0.64);
-      } else if (phase === "recognizing text") {
-        setPaymentOcrStatus("正在识别付款信息…", 0.7 + phaseProgress * 0.3);
-      }
-    },
-  }).then((worker) => {
-    paymentOcrReady = true;
-    return worker;
-  }).catch((error) => {
-    paymentOcrWorkerPromise = null;
-    paymentOcrReady = false;
-    throw error;
-  });
-  return paymentOcrWorkerPromise;
+function getZhipuApiKey() {
+  return String(localStorage.getItem(ZHIPU_VISION_CONFIG.keyStorageKey) || "").trim();
 }
 
-function preloadPaymentOcr() {
-  if (paymentOcrReady || paymentOcrWorkerPromise || typeof window.Tesseract === "undefined") return;
-  setPaymentOcrStatus("正在预加载本地识别引擎…", 0.05);
-  getPaymentOcrWorker().then(() => {
-    if (!$("#paymentModal").classList.contains("hidden")) setPaymentOcrStatus("识别引擎已就绪，请选择付款截图", 0.7, "success");
-  }).catch((error) => {
-    console.error(error);
-    if (!$("#paymentModal").classList.contains("hidden")) setPaymentOcrStatus("识别引擎加载失败，请刷新后重试", 1, "error");
+function saveZhipuApiKey(value) {
+  try {
+    localStorage.setItem(ZHIPU_VISION_CONFIG.keyStorageKey, String(value || "").trim());
+  } catch (error) {
+    console.warn("保存 API Key 失败", error);
+  }
+}
+
+function fileToDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(new Error("读取图片失败"));
+    reader.readAsDataURL(file);
   });
+}
+
+async function callZhipuVision(apiKey, dataUrl) {
+  const response = await fetch(ZHIPU_VISION_CONFIG.endpoint, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+    body: JSON.stringify({
+      model: ZHIPU_VISION_CONFIG.model,
+      temperature: 0.1,
+      messages: [{
+        role: "user",
+        content: [
+          { type: "image_url", image_url: { url: dataUrl } },
+          { type: "text", text: VISION_PROMPT },
+        ],
+      }],
+    }),
+  });
+  if (!response.ok) {
+    const detail = await response.text().catch(() => "");
+    if (response.status === 401) throw new Error("API Key 无效，请检查后重新填写");
+    if (response.status === 429) throw new Error("调用过于频繁，请稍后再试");
+    throw new Error(`接口错误 ${response.status} ${detail.slice(0, 100)}`);
+  }
+  const data = await response.json();
+  return String(data?.choices?.[0]?.message?.content || "");
+}
+
+function parseVisionAnswer(answer) {
+  const text = String(answer || "").replace(/```json|```/gi, "").trim();
+  const jsonText = text.match(/\{[\s\S]*\}/)?.[0] || "";
+  let date = "";
+  let amount = 0;
+  let party = "";
+  try {
+    const parsed = JSON.parse(jsonText || "{}");
+    date = String(parsed.date || "").trim();
+    amount = Number(String(parsed.amount ?? "").replace(/[^\d.]/g, "")) || 0;
+    party = String(parsed.party || "").trim();
+  } catch (error) {
+    const amountMatch = text.match(/([1-9][\d,]*(?:\.\d{1,2})?)/);
+    if (amountMatch) amount = Number(amountMatch[1].replaceAll(",", "")) || 0;
+  }
+  if (date && !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    const m = date.match(/(20\d{2})[-/年.](\d{1,2})[-/月.](\d{1,2})/);
+    date = m ? `${m[1]}-${String(m[2]).padStart(2, "0")}-${String(m[3]).padStart(2, "0")}` : "";
+  }
+  const campaign = party ? matchCampaignFromReceipt(party) : null;
+  return { date, amount, campaign, confidence: 100 };
 }
 
 async function recognizePaymentImage(file) {
@@ -825,24 +818,27 @@ async function recognizePaymentImage(file) {
     toast("请选择付款截图图片", "error");
     return;
   }
-  if (file.size > 12 * 1024 * 1024) {
-    toast("图片不能超过 12MB", "error");
+  if (file.size > 8 * 1024 * 1024) {
+    toast("图片不能超过 8MB", "error");
     return;
   }
-  if (typeof window.Tesseract === "undefined") {
-    setPaymentOcrStatus("识别引擎加载失败，请刷新后重试", 1, "error");
+  const apiKey = getZhipuApiKey();
+  if (!apiKey) {
+    setPaymentOcrStatus("请先在下方填写智谱 API Key（bigmodel.cn 免费申请）", 1, "error");
+    $("#zhipuApiKey").focus();
     return;
   }
   $("#paymentImageName").textContent = file.name;
   $("#paymentUploadButton").disabled = true;
-  setPaymentOcrStatus("正在加载本地识别引擎…", 0.05);
+  setPaymentOcrStatus("正在上传截图…", 0.2);
   try {
-    const worker = await getPaymentOcrWorker();
-    const { data } = await worker.recognize(file);
-    const parsed = parsePaymentReceipt(data.text || "", data.confidence || 0);
+    const dataUrl = await fileToDataUrl(file);
+    setPaymentOcrStatus("智谱 GLM-4V 正在识别付款信息…", 0.5);
+    const answer = await callZhipuVision(apiKey, dataUrl);
+    const parsed = parseVisionAnswer(answer);
     paymentOcrResult = parsed;
-    $("#paymentDate").value = parsed.date;
-    $("#paymentAmount").value = parsed.amount || "";
+    if (parsed.date) $("#paymentDate").value = parsed.date;
+    if (parsed.amount) $("#paymentAmount").value = parsed.amount;
     if (parsed.campaign) {
       $("#paymentCampaign").value = parsed.campaign.id;
       $("#paymentAccountSearch").value = rechargeAccountLabel(parsed.campaign);
@@ -851,7 +847,7 @@ async function recognizePaymentImage(file) {
     setPaymentOcrStatus(missing.length ? `识别完成，请补充${missing.join("、")}` : "识别完成，请确认后保存", 1, "success");
   } catch (error) {
     console.error(error);
-    setPaymentOcrStatus("识别失败，可手动填写后保存", 1, "error");
+    setPaymentOcrStatus(`识别失败：${error.message || "请重试或手动填写"}`, 1, "error");
   } finally {
     $("#paymentUploadButton").disabled = false;
   }
@@ -1047,8 +1043,8 @@ function openPaymentModal(payment = null) {
   $("#paymentAccountSearch").value = selectedCampaign ? rechargeAccountLabel(selectedCampaign) : "";
   $("#paymentAccountSearch").setCustomValidity("");
   $("#paymentAmount").value = payment?.amount ?? "";
+  $("#zhipuApiKey").value = getZhipuApiKey();
   showModal("paymentModal");
-  preloadPaymentOcr();
 }
 
 function openRecordModal(record = null, campaignId = null) {
@@ -1168,7 +1164,7 @@ async function handlePaymentSubmit(event) {
     amount: Number($("#paymentAmount").value),
     recordType: "payment",
     status: "已付款",
-    source: paymentOcrResult ? "local-ocr" : (existing?.source || "manual"),
+    source: paymentOcrResult ? "glm-4v" : (existing?.source || "manual"),
     ocrConfidence: paymentOcrResult?.confidence || existing?.ocrConfidence || 0,
     createdAt: existing?.createdAt || new Date().toISOString(),
     updatedAt: new Date().toISOString(),
@@ -1390,6 +1386,7 @@ function bindEvents() {
     event.target.setCustomValidity("");
   });
   $("#paymentUploadButton").addEventListener("click", () => $("#paymentImageInput").click());
+  $("#zhipuApiKey").addEventListener("input", (event) => saveZhipuApiKey(event.target.value));
   $("#paymentImageInput").addEventListener("change", (event) => {
     const [file] = event.target.files;
     if (file) recognizePaymentImage(file);
