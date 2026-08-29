@@ -1,14 +1,19 @@
 "use strict";
 
 const STORAGE_KEY = "traffic_manager_data_v1";
-const APP_VERSION = "1.2.2";
+const APP_VERSION = "1.3.0";
 const CLOUD_ROW_ID = 2;
 const RECHARGE_WORKFLOW_VERSION = "2026-08-29-v1";
 const REQUIRED_ACCOUNT_NAMES = ["杭州夕雾", "MELBOURNE", "江西井意", "浏阳市关口韵帆", "ISAMORVAN", "研汁工社"];
 const RECHARGE_LEDGER_META = Object.freeze({
-  recharge: { title: "充值记录", dateLabel: "充值日期", amountLabel: "充值金额" },
-  payment: { title: "付款记录", dateLabel: "付款日期", amountLabel: "付款金额" },
-  pending: { title: "待付款", dateLabel: "登记日期", amountLabel: "待付金额" },
+  recharge: { title: "充值记录", dateLabel: "充值日期", accountLabel: "充值账户", amountLabel: "充值金额", addLabel: "＋ 添加充值记录" },
+  payment: { title: "付款记录", dateLabel: "付款日期", accountLabel: "付款账户", amountLabel: "付款金额", addLabel: "＋ 上传付款截图" },
+  pending: { title: "待付款", dateLabel: "登记日期", accountLabel: "待付款账户", amountLabel: "待付金额", addLabel: "" },
+});
+const PAYMENT_OCR_ASSETS = Object.freeze({
+  workerPath: "https://songyunjie1994.github.io/payment-manager/ocr/worker.min.js",
+  corePath: "https://songyunjie1994.github.io/payment-manager/ocr/core",
+  langPath: "https://songyunjie1994.github.io/payment-manager/ocr/lang",
 });
 const CLOUD_CONFIG = Object.freeze({
   url: "https://mabxdkjqilulkrmqrrgo.supabase.co",
@@ -29,6 +34,7 @@ let cloudInitializationPromise = null;
 let lastCloudSnapshot = "";
 let lastCloudRefreshAt = 0;
 let activeRechargeLedger = "recharge";
+let paymentOcrResult = null;
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
@@ -513,6 +519,7 @@ function renderSelectOptions() {
     const accountDetail = item.account && item.account !== item.name ? `${item.account} · ${item.platform}` : item.platform;
     return `<option value="${escapeHtml(rechargeAccountLabel(item))}" label="${escapeHtml(accountDetail)}"></option>`;
   }).join("");
+  $("#paymentAccountOptions").innerHTML = $("#rechargeAccountOptions").innerHTML;
   rechargeSelect.value = state.campaigns.some((item) => item.id === currentRechargeCampaign) ? currentRechargeCampaign : "";
 }
 
@@ -709,26 +716,131 @@ function filteredRecharges() {
   }).sort((a, b) => b.date.localeCompare(a.date) || String(b.createdAt).localeCompare(String(a.createdAt)));
 }
 
+function normalizeReceiptText(value) {
+  return String(value || "").toLowerCase().replace(/[^a-z0-9\u4e00-\u9fff]+/g, "");
+}
+
+function matchCampaignFromReceipt(text) {
+  const normalizedText = normalizeReceiptText(text);
+  return state.campaigns.find((campaign) => {
+    const labels = [rechargeAccountLabel(campaign), campaign.account].filter(Boolean);
+    return labels.some((label) => {
+      const normalizedLabel = normalizeReceiptText(label);
+      return normalizedLabel.length >= 3 && normalizedText.includes(normalizedLabel);
+    });
+  }) || null;
+}
+
+function parsePaymentReceipt(text, confidence = 0) {
+  const flattened = String(text || "").replace(/\s+/g, " ")
+    .replace(/(\d)\s*,\s*(\d)/g, "$1,$2")
+    .replace(/(\d)\s*\.\s*(\d)/g, "$1.$2");
+  let amount = 0;
+  let date = "";
+  let match;
+  const amountPatterns = [
+    /(?:实付|付款金额|支付金额|订单金额|充值金额|转账金额|交易金额|金额)[^\d¥￥]{0,8}(?:CNY|RMB|人民币)?[¥￥]?\s*([\d,]+(?:\.\d{1,2})?)/i,
+    /(?:CNY|RMB|人民币)\s*[¥￥]?\s*([\d,]+(?:\.\d{1,2})?)/i,
+    /[¥￥]\s*([\d,]+(?:\.\d{1,2})?)/,
+    /([\d,]+\.\d{2})\s*元/,
+  ];
+  for (const pattern of amountPatterns) {
+    match = flattened.match(pattern);
+    if (match) {
+      amount = Number(match[1].replaceAll(",", ""));
+      break;
+    }
+  }
+  match = flattened.match(/(20\d{2})[-/年.]\s*(\d{1,2})[-/月.]\s*(\d{1,2})/);
+  if (match) date = `${match[1]}-${String(match[2]).padStart(2, "0")}-${String(match[3]).padStart(2, "0")}`;
+  if (!date) {
+    match = flattened.match(/(?:^|\D)(\d{1,2})[-/月.]\s*(\d{1,2})(?:日|\D)/);
+    if (match) date = `${new Date().getFullYear()}-${String(match[1]).padStart(2, "0")}-${String(match[2]).padStart(2, "0")}`;
+  }
+  return { date: date || localDate(), amount, campaign: matchCampaignFromReceipt(text), confidence: Math.round(Number(confidence || 0)) };
+}
+
+function setPaymentOcrStatus(message, progress = 0, stateName = "working") {
+  const status = $("#paymentOcrStatus");
+  status.classList.remove("hidden", "success", "error");
+  if (stateName !== "working") status.classList.add(stateName);
+  $("#paymentOcrMessage").textContent = message;
+  const percent = Math.max(0, Math.min(100, Math.round(progress * 100)));
+  $("#paymentOcrPercent").textContent = `${percent}%`;
+  $("#paymentOcrProgress").style.width = `${percent}%`;
+}
+
+async function recognizePaymentImage(file) {
+  if (!file?.type?.startsWith("image/")) {
+    toast("请选择付款截图图片", "error");
+    return;
+  }
+  if (file.size > 12 * 1024 * 1024) {
+    toast("图片不能超过 12MB", "error");
+    return;
+  }
+  if (typeof window.Tesseract === "undefined") {
+    setPaymentOcrStatus("识别引擎加载失败，请刷新后重试", 1, "error");
+    return;
+  }
+  $("#paymentImageName").textContent = file.name;
+  $("#paymentUploadButton").disabled = true;
+  setPaymentOcrStatus("正在加载本地识别引擎…", 0.05);
+  let worker = null;
+  try {
+    worker = await window.Tesseract.createWorker("chi_sim+eng", 1, {
+      workerPath: PAYMENT_OCR_ASSETS.workerPath,
+      corePath: PAYMENT_OCR_ASSETS.corePath,
+      langPath: PAYMENT_OCR_ASSETS.langPath,
+      gzip: false,
+      logger: (message) => {
+        if (message.status === "recognizing text") setPaymentOcrStatus("正在识别付款信息…", message.progress || 0);
+      },
+    });
+    const { data } = await worker.recognize(file);
+    const parsed = parsePaymentReceipt(data.text || "", data.confidence || 0);
+    paymentOcrResult = parsed;
+    $("#paymentDate").value = parsed.date;
+    $("#paymentAmount").value = parsed.amount || "";
+    if (parsed.campaign) {
+      $("#paymentCampaign").value = parsed.campaign.id;
+      $("#paymentAccountSearch").value = rechargeAccountLabel(parsed.campaign);
+    }
+    const missing = [!parsed.amount && "金额", !parsed.campaign && "账户"].filter(Boolean);
+    setPaymentOcrStatus(missing.length ? `识别完成，请补充${missing.join("、")}` : "识别完成，请确认后保存", 1, "success");
+  } catch (error) {
+    console.error(error);
+    setPaymentOcrStatus("识别失败，可手动填写后保存", 1, "error");
+  } finally {
+    if (worker) await worker.terminate().catch(() => {});
+    $("#paymentUploadButton").disabled = false;
+  }
+}
+
 function renderRecharges() {
   const rows = filteredRecharges();
   const meta = RECHARGE_LEDGER_META[activeRechargeLedger];
   $$('[data-recharge-ledger]').forEach((button) => button.classList.toggle("active", button.dataset.rechargeLedger === activeRechargeLedger));
   $("#rechargeLedgerTitle").textContent = meta.title;
   $("#rechargeDateHeading").textContent = meta.dateLabel;
+  $("#rechargeAccountHeading").textContent = meta.accountLabel;
   $("#rechargeAmountHeading").textContent = meta.amountLabel;
-  $("#addRechargeButton").classList.toggle("hidden", activeRechargeLedger !== "recharge");
+  $("#addRechargeButton").classList.toggle("hidden", !meta.addLabel);
+  $("#addRechargeButton").textContent = meta.addLabel;
   $("#rechargeTableBody").innerHTML = rows.map((recharge) => {
     const campaign = campaignById(recharge.campaignId);
     return `<tr>
       <td>${formatDate(recharge.date)}</td>
       <td>${campaign ? campaignNameCell(campaign, campaign.account) : `<span>已删除的账户</span>`}</td>
       <td class="number-cell"><strong>${money(recharge.amount, 2)}</strong></td>
-      <td class="action-cell">${activeRechargeLedger === "recharge" ? `<div class="table-actions"><button class="small-action" data-action="edit-recharge" data-id="${escapeHtml(recharge.id)}">编辑</button><button class="small-action delete" data-action="delete-recharge" data-id="${escapeHtml(recharge.id)}">删除</button></div>` : "—"}</td>
+      <td class="action-cell">${activeRechargeLedger !== "pending" ? `<div class="table-actions"><button class="small-action" data-action="edit-ledger" data-id="${escapeHtml(recharge.id)}">编辑</button><button class="small-action delete" data-action="delete-ledger" data-id="${escapeHtml(recharge.id)}">删除</button></div>` : "—"}</td>
     </tr>`;
   }).join("");
   $("#rechargeEmptyState").classList.toggle("hidden", rows.length > 0);
   $("#rechargeEmptyTitle").textContent = `还没有${meta.title}`;
-  $("#rechargeEmptyCopy").textContent = activeRechargeLedger === "recharge" ? "点击“添加充值记录”开始登记。" : `当前没有${meta.title}。`;
+  $("#rechargeEmptyCopy").textContent = activeRechargeLedger === "recharge"
+    ? "点击“添加充值记录”开始登记。"
+    : activeRechargeLedger === "payment" ? "点击“上传付款截图”自动识别生成记录。" : "当前没有待付款记录。";
   $("#rechargeTableBody").closest(".table-scroll").classList.toggle("hidden", rows.length === 0);
 }
 
@@ -876,6 +988,28 @@ function openRechargeModal(recharge = null, campaignId = null) {
   setTimeout(() => $("#rechargeDate").focus(), 60);
 }
 
+function openPaymentModal(payment = null) {
+  if (!state.campaigns.length) {
+    toast("请先添加付款账户", "error");
+    return;
+  }
+  $("#paymentForm").reset();
+  paymentOcrResult = null;
+  $("#paymentId").value = payment?.id || "";
+  $("#paymentModalTitle").textContent = payment ? "编辑付款记录" : "上传付款截图";
+  $("#paymentUploadTitle").textContent = payment ? "重新上传截图识别" : "选择付款截图";
+  $("#paymentImageName").textContent = "支持支付宝、微信和银行回单图片";
+  $("#paymentOcrStatus").classList.add("hidden");
+  $("#paymentOcrProgress").style.width = "0%";
+  $("#paymentDate").value = payment?.date || localDate();
+  const selectedCampaign = campaignById(payment?.campaignId);
+  $("#paymentCampaign").value = selectedCampaign?.id || "";
+  $("#paymentAccountSearch").value = selectedCampaign ? rechargeAccountLabel(selectedCampaign) : "";
+  $("#paymentAccountSearch").setCustomValidity("");
+  $("#paymentAmount").value = payment?.amount ?? "";
+  showModal("paymentModal");
+}
+
 function openRecordModal(record = null, campaignId = null) {
   if (!state.campaigns.length) {
     toast("请先新建一个投流计划", "error");
@@ -973,6 +1107,40 @@ async function handleRechargeSubmit(event) {
   toast(id ? "充值记录已更新" : "充值记录已保存");
 }
 
+async function handlePaymentSubmit(event) {
+  event.preventDefault();
+  const accountInput = $("#paymentAccountSearch");
+  const selectedCampaign = resolveRechargeAccount(accountInput.value);
+  if (!selectedCampaign) {
+    accountInput.setCustomValidity("请从搜索结果中选择一个付款账户");
+    accountInput.reportValidity();
+    return;
+  }
+  accountInput.setCustomValidity("");
+  $("#paymentCampaign").value = selectedCampaign.id;
+  const id = $("#paymentId").value;
+  const existing = state.recharges.find((item) => item.id === id);
+  const item = {
+    id: id || uid("pay"),
+    date: $("#paymentDate").value,
+    campaignId: selectedCampaign.id,
+    amount: Number($("#paymentAmount").value),
+    recordType: "payment",
+    status: "已付款",
+    source: paymentOcrResult ? "local-ocr" : (existing?.source || "manual"),
+    ocrConfidence: paymentOcrResult?.confidence || existing?.ocrConfidence || 0,
+    createdAt: existing?.createdAt || new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+  if (id) state.recharges = state.recharges.map((record) => record.id === id ? item : record);
+  else state.recharges.unshift(item);
+  markAsRealData();
+  if (!(await saveState())) return;
+  closeModal("paymentModal");
+  renderAll();
+  toast(id ? "付款记录已更新" : "付款记录已保存");
+}
+
 async function handleRecordSubmit(event) {
   event.preventDefault();
   const id = $("#recordId").value;
@@ -1054,13 +1222,15 @@ async function deleteCampaign(id) {
 }
 
 async function deleteRecharge(id) {
-  const confirmed = await askConfirm("删除这笔充值？", "删除后将影响账户余额和报表汇总，此操作无法撤销。", "删除充值");
+  const record = state.recharges.find((item) => item.id === id);
+  const isPayment = record?.recordType === "payment";
+  const confirmed = await askConfirm(isPayment ? "删除这笔付款？" : "删除这笔充值？", "删除后将影响相关汇总，此操作无法撤销。", isPayment ? "删除付款" : "删除充值");
   if (!confirmed) return;
   state.recharges = state.recharges.filter((item) => item.id !== id);
   markAsRealData();
   if (!(await saveState())) return;
   renderAll();
-  toast("充值记录已删除");
+  toast(isPayment ? "付款记录已删除" : "充值记录已删除");
 }
 
 async function deleteRecord(id) {
@@ -1156,9 +1326,10 @@ function bindEvents() {
   $("#menuButton").addEventListener("click", () => $("#sidebar").classList.toggle("open"));
   $("#dashboardDate").addEventListener("change", renderDashboard);
   $("#quickRecordButton").addEventListener("click", () => openRecordModal());
-  $("#addRechargeButton").addEventListener("click", () => openRechargeModal());
+  $("#addRechargeButton").addEventListener("click", () => activeRechargeLedger === "payment" ? openPaymentModal() : openRechargeModal());
   $("#addRecordButton").addEventListener("click", () => openRecordModal());
   $("#rechargeForm").addEventListener("submit", handleRechargeSubmit);
+  $("#paymentForm").addEventListener("submit", handlePaymentSubmit);
   $("#campaignForm").addEventListener("submit", handleCampaignSubmit);
   $("#recordForm").addEventListener("submit", handleRecordSubmit);
   ["#recordSpend", "#recordClicks", "#recordOrders", "#recordRevenue"].forEach((selector) => $(selector).addEventListener("input", updateLiveMetrics));
@@ -1172,14 +1343,36 @@ function bindEvents() {
     $("#rechargeCampaign").value = campaign?.id || "";
     event.target.setCustomValidity("");
   });
+  $("#paymentAccountSearch").addEventListener("input", (event) => {
+    const campaign = resolveRechargeAccount(event.target.value);
+    $("#paymentCampaign").value = campaign?.id || "";
+    event.target.setCustomValidity("");
+  });
+  $("#paymentUploadButton").addEventListener("click", () => $("#paymentImageInput").click());
+  $("#paymentImageInput").addEventListener("change", (event) => {
+    const [file] = event.target.files;
+    if (file) recognizePaymentImage(file);
+    event.target.value = "";
+  });
+  $("#paymentUploadButton").addEventListener("dragover", (event) => {
+    event.preventDefault();
+    event.currentTarget.classList.add("dragging");
+  });
+  $("#paymentUploadButton").addEventListener("dragleave", (event) => event.currentTarget.classList.remove("dragging"));
+  $("#paymentUploadButton").addEventListener("drop", (event) => {
+    event.preventDefault();
+    event.currentTarget.classList.remove("dragging");
+    const [file] = [...event.dataTransfer.files].filter((item) => item.type.startsWith("image/"));
+    if (file) recognizePaymentImage(file);
+  });
   ["#recordSearch", "#recordStartDate", "#recordEndDate", "#recordPlatformFilter"].forEach((selector) => $(selector).addEventListener("input", renderRecords));
 
   $("#rechargeTableBody").addEventListener("click", (event) => {
     const button = event.target.closest("[data-action]");
     if (!button) return;
     const recharge = state.recharges.find((item) => item.id === button.dataset.id);
-    if (button.dataset.action === "edit-recharge") openRechargeModal(recharge);
-    if (button.dataset.action === "delete-recharge") deleteRecharge(button.dataset.id);
+    if (button.dataset.action === "edit-ledger") recharge?.recordType === "payment" ? openPaymentModal(recharge) : openRechargeModal(recharge);
+    if (button.dataset.action === "delete-ledger") deleteRecharge(button.dataset.id);
   });
 
   $("#recordTableBody").addEventListener("click", (event) => {

@@ -9,7 +9,7 @@
       content="以云端数据为主，支持充值登记、消耗录入与投流报表的管理系统。"
     />
     <title>投流管理系统</title>
-    <link rel="stylesheet" href="styles.css?v=1.2.2" />
+    <link rel="stylesheet" href="styles.css?v=1.3.0" />
   </head>
   <body>
     <div class="app-shell">
@@ -174,7 +174,7 @@
                   <thead>
                     <tr>
                       <th id="rechargeDateHeading">充值日期</th>
-                      <th>充值账户</th>
+                      <th id="rechargeAccountHeading">充值账户</th>
                       <th class="number-cell" id="rechargeAmountHeading">充值金额</th>
                       <th class="action-cell">操作</th>
                     </tr>
@@ -459,6 +459,38 @@
       </form>
     </div>
 
+    <div class="modal-backdrop hidden" id="paymentModal" role="dialog" aria-modal="true" aria-labelledby="paymentModalTitle">
+      <form class="modal" id="paymentForm">
+        <div class="modal-header">
+          <div><p class="section-kicker">付款记录</p><h2 id="paymentModalTitle">上传付款截图</h2></div>
+          <button type="button" class="icon-button modal-close" data-close-modal="paymentModal" aria-label="关闭">×</button>
+        </div>
+        <input type="hidden" id="paymentId" />
+        <button class="payment-upload-zone" id="paymentUploadButton" type="button">
+          <span class="payment-upload-icon" aria-hidden="true">↥</span>
+          <strong id="paymentUploadTitle">选择付款截图</strong>
+          <small id="paymentImageName">支持支付宝、微信和银行回单图片</small>
+        </button>
+        <input class="hidden" id="paymentImageInput" type="file" accept="image/*" />
+        <div class="payment-ocr-status hidden" id="paymentOcrStatus" aria-live="polite">
+          <div class="payment-ocr-status-row"><span id="paymentOcrMessage">正在识别…</span><strong id="paymentOcrPercent">0%</strong></div>
+          <div class="payment-ocr-progress"><span id="paymentOcrProgress"></span></div>
+        </div>
+        <div class="form-grid payment-form-grid">
+          <label class="form-field"><span>付款日期 *</span><input id="paymentDate" type="date" required /></label>
+          <label class="form-field span-2">
+            <span>付款账户 *</span>
+            <input id="paymentAccountSearch" type="search" list="paymentAccountOptions" autocomplete="off" required placeholder="识别后可搜索修改账户" />
+            <datalist id="paymentAccountOptions"></datalist>
+            <input id="paymentCampaign" type="hidden" />
+          </label>
+          <label class="form-field span-3"><span>付款金额（元）*</span><input id="paymentAmount" type="number" min="0.01" step="0.01" inputmode="decimal" required placeholder="识别后可修改金额" /></label>
+        </div>
+        <p class="payment-privacy">图片仅在当前浏览器本地识别，不上传云端；确认保存后只同步日期、账户和金额。</p>
+        <div class="modal-actions"><button type="button" class="button button-ghost" data-close-modal="paymentModal">取消</button><button type="submit" class="button button-primary">保存付款记录</button></div>
+      </form>
+    </div>
+
     <div class="confirm-backdrop hidden" id="confirmDialog" role="alertdialog" aria-modal="true" aria-labelledby="confirmTitle">
       <div class="confirm-card">
         <div class="confirm-symbol">!</div>
@@ -472,6 +504,7 @@
     </div>
 
     <div class="toast-region" id="toastRegion" aria-live="polite"></div>
-    <script src="app.js?v=1.2.2"></script>
+    <script src="https://songyunjie1994.github.io/payment-manager/ocr/tesseract.min.js"></script>
+    <script src="app.js?v=1.3.0"></script>
   </body>
 </html>
