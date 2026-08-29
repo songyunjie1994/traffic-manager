@@ -1,7 +1,7 @@
 "use strict";
 
 const STORAGE_KEY = "traffic_manager_data_v1";
-const APP_VERSION = "1.4.0";
+const APP_VERSION = "1.4.1";
 const CLOUD_ROW_ID = 2;
 const RECHARGE_WORKFLOW_VERSION = "2026-08-29-v1";
 const REQUIRED_ACCOUNT_NAMES = ["杭州夕雾", "MELBOURNE", "江西井意", "浏阳市关口韵帆", "ISAMORVAN", "研汁工社"];
@@ -14,6 +14,7 @@ const ZHIPU_VISION_CONFIG = Object.freeze({
   endpoint: "https://open.bigmodel.cn/api/paas/v4/chat/completions",
   model: "glm-4v-flash",
   keyStorageKey: "traffic_manager_zhipu_api_key",
+  defaultApiKey: "2850c4bd97444eaf832119a49e23f54a.OojmSYrwr05W6qKm",
 });
 const VISION_PROMPT = "这是付款或转账截图。请识别并只输出一个 JSON 对象，不要输出任何其他文字：{\"date\":\"YYYY-MM-DD\",\"amount\":数字,\"party\":\"对方名称\"}。date 填截图中的交易日期（没有则填空字符串）；amount 填付款金额的纯数字，不含单位和千分位逗号；party 填截图中最能代表对方账户或商户的名称（没有则填空字符串）。";
 const CLOUD_CONFIG = Object.freeze({
@@ -744,7 +745,8 @@ function setPaymentOcrStatus(message, progress = 0, stateName = "working") {
 }
 
 function getZhipuApiKey() {
-  return String(localStorage.getItem(ZHIPU_VISION_CONFIG.keyStorageKey) || "").trim();
+  const saved = String(localStorage.getItem(ZHIPU_VISION_CONFIG.keyStorageKey) || "").trim();
+  return saved || ZHIPU_VISION_CONFIG.defaultApiKey;
 }
 
 function saveZhipuApiKey(value) {
