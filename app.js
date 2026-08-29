@@ -1,7 +1,7 @@
 "use strict";
 
 const STORAGE_KEY = "traffic_manager_data_v1";
-const APP_VERSION = "1.3.0";
+const APP_VERSION = "1.3.1";
 const CLOUD_ROW_ID = 2;
 const RECHARGE_WORKFLOW_VERSION = "2026-08-29-v1";
 const REQUIRED_ACCOUNT_NAMES = ["杭州夕雾", "MELBOURNE", "江西井意", "浏阳市关口韵帆", "ISAMORVAN", "研汁工社"];
@@ -794,7 +794,17 @@ async function recognizePaymentImage(file) {
       langPath: PAYMENT_OCR_ASSETS.langPath,
       gzip: false,
       logger: (message) => {
-        if (message.status === "recognizing text") setPaymentOcrStatus("正在识别付款信息…", message.progress || 0);
+        const phase = String(message.status || "");
+        const phaseProgress = Number(message.progress || 0);
+        if (phase.includes("tesseract core")) {
+          setPaymentOcrStatus("正在加载识别引擎（首次约需 1–3 分钟）…", 0.08 + phaseProgress * 0.18);
+        } else if (phase.includes("language traineddata")) {
+          setPaymentOcrStatus("正在加载中英文识别模型…", 0.26 + phaseProgress * 0.36);
+        } else if (phase.includes("initializing")) {
+          setPaymentOcrStatus("正在准备本地识别…", 0.64);
+        } else if (phase === "recognizing text") {
+          setPaymentOcrStatus("正在识别付款信息…", 0.7 + phaseProgress * 0.3);
+        }
       },
     });
     const { data } = await worker.recognize(file);
