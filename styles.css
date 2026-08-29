@@ -1448,7 +1448,6 @@ tbody tr:hover td {
 
 .status-badge.paused { color: #9a651d; background: #fff2d8; }
 .status-badge.ended { color: #717689; background: #eef0f4; }
-
 .filter-bar,
 .summary-chip {
   background: rgba(255, 255, 255, 0.92);
@@ -2116,6 +2115,88 @@ body::after {
   font-weight: 700;
 }
 
+.status-switch {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 5px;
+  margin-bottom: 14px;
+  padding: 5px;
+  background: #ffffff;
+  border-radius: var(--reference-radius);
+  box-shadow: var(--reference-shadow);
+}
+
+.status-switch-button {
+  min-height: 44px;
+  padding: 9px 12px;
+  color: var(--reference-muted);
+  background: transparent;
+  border: 0;
+  border-radius: 9px;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: color 150ms ease, background 150ms ease, box-shadow 150ms ease;
+}
+
+.status-switch-button:hover {
+  color: #4338ca;
+  background: #f8fafc;
+}
+
+.status-switch-button.active {
+  color: #ffffff;
+  background: var(--reference-primary);
+  box-shadow: 0 4px 12px rgba(79, 70, 229, 0.2);
+}
+
+.status-switch-button:focus-visible {
+  outline: 3px solid rgba(79, 70, 229, 0.22);
+  outline-offset: 2px;
+}
+
+.ledger-panel {
+  padding: 0;
+  overflow: hidden;
+}
+
+.ledger-panel-header {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 20px 14px;
+  border-bottom: 1px solid var(--reference-border);
+}
+
+.ledger-panel-header h3 {
+  margin: 2px 0 0;
+  color: var(--reference-text);
+  font-size: 18px;
+}
+
+.ledger-panel > .record-summary,
+.ledger-panel > .filter-bar {
+  margin-right: 20px;
+  margin-left: 20px;
+}
+
+.ledger-panel > .record-summary {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-top: 16px;
+}
+
+.ledger-panel table {
+  min-width: 560px;
+}
+
+.field-hint {
+  color: var(--reference-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
 .filter-bar {
   display: flex;
   gap: 8px;
@@ -2417,6 +2498,18 @@ tbody tr:hover td {
 
   .toolbar-actions {
     flex-direction: column-reverse;
+  }
+
+  .ledger-panel-header {
+    align-items: stretch;
+    flex-direction: column;
+    padding: 18px;
+  }
+
+  .ledger-panel > .record-summary,
+  .ledger-panel > .filter-bar {
+    margin-right: 14px;
+    margin-left: 14px;
   }
 
   .kpi-card {
