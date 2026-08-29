@@ -1,14 +1,14 @@
 "use strict";
 
 const STORAGE_KEY = "traffic_manager_data_v1";
-const APP_VERSION = "1.2.1";
+const APP_VERSION = "1.2.2";
 const CLOUD_ROW_ID = 2;
 const RECHARGE_WORKFLOW_VERSION = "2026-08-29-v1";
 const REQUIRED_ACCOUNT_NAMES = ["杭州夕雾", "MELBOURNE", "江西井意", "浏阳市关口韵帆", "ISAMORVAN", "研汁工社"];
 const RECHARGE_LEDGER_META = Object.freeze({
-  recharge: { title: "充值记录", kicker: "账户充值", dateLabel: "充值日期", amountLabel: "充值金额" },
-  payment: { title: "付款记录", kicker: "付款明细", dateLabel: "付款日期", amountLabel: "付款金额" },
-  pending: { title: "待付款", kicker: "待办款项", dateLabel: "登记日期", amountLabel: "待付金额" },
+  recharge: { title: "充值记录", dateLabel: "充值日期", amountLabel: "充值金额" },
+  payment: { title: "付款记录", dateLabel: "付款日期", amountLabel: "付款金额" },
+  pending: { title: "待付款", dateLabel: "登记日期", amountLabel: "待付金额" },
 });
 const CLOUD_CONFIG = Object.freeze({
   url: "https://mabxdkjqilulkrmqrrgo.supabase.co",
@@ -493,7 +493,7 @@ function renderSelectOptions() {
   $("#campaignPlatform").innerHTML = PLATFORMS.map((item) => `<option value="${escapeHtml(item)}">${escapeHtml(item)}</option>`).join("");
   if (PLATFORMS.includes(currentCampaignPlatform)) $("#campaignPlatform").value = currentCampaignPlatform;
 
-  ["#campaignPlatformFilter", "#recordPlatformFilter", "#rechargePlatformFilter"].forEach((selector) => {
+  ["#recordPlatformFilter"].forEach((selector) => {
     const select = $(selector);
     const current = select.value;
     select.innerHTML = `<option value="all">全部平台</option>${PLATFORMS.map((item) => `<option value="${escapeHtml(item)}">${escapeHtml(item)}</option>`).join("")}`;
@@ -703,36 +703,20 @@ function campaignNameCell(campaign, subtitle) {
 }
 
 function filteredRecharges() {
-  const query = $("#rechargeSearch").value.trim().toLowerCase();
-  const start = $("#rechargeStartDate").value;
-  const end = $("#rechargeEndDate").value;
-  const platform = $("#rechargePlatformFilter").value;
   return state.recharges.filter((recharge) => {
-    const campaign = campaignById(recharge.campaignId);
-    const haystack = [campaign?.name, campaign?.account].join(" ").toLowerCase();
     const recordType = recharge.recordType || "recharge";
-    return (!query || haystack.includes(query)) && (!start || recharge.date >= start) && (!end || recharge.date <= end) &&
-      (platform === "all" || campaign?.platform === platform) && recordType === activeRechargeLedger;
+    return recordType === activeRechargeLedger;
   }).sort((a, b) => b.date.localeCompare(a.date) || String(b.createdAt).localeCompare(String(a.createdAt)));
 }
 
 function renderRecharges() {
   const rows = filteredRecharges();
   const meta = RECHARGE_LEDGER_META[activeRechargeLedger];
-  const accountCount = new Set(rows.map((item) => item.campaignId).filter(Boolean)).size;
-  const summary = [
-    ["记录笔数", `${rows.length} 笔`],
-    [meta.amountLabel, money(sum(rows, "amount"))],
-    ["涉及账户", `${accountCount} 个`],
-  ];
   $$('[data-recharge-ledger]').forEach((button) => button.classList.toggle("active", button.dataset.rechargeLedger === activeRechargeLedger));
-  $("#rechargeLedgerKicker").textContent = meta.kicker;
   $("#rechargeLedgerTitle").textContent = meta.title;
   $("#rechargeDateHeading").textContent = meta.dateLabel;
   $("#rechargeAmountHeading").textContent = meta.amountLabel;
   $("#addRechargeButton").classList.toggle("hidden", activeRechargeLedger !== "recharge");
-  $("#exportRechargeCsvButton").classList.toggle("hidden", activeRechargeLedger !== "recharge");
-  $("#rechargeSummary").innerHTML = summary.map(([label, value]) => `<div class="summary-chip"><span>${label}</span><strong>${value}</strong></div>`).join("");
   $("#rechargeTableBody").innerHTML = rows.map((recharge) => {
     const campaign = campaignById(recharge.campaignId);
     return `<tr>
@@ -749,6 +733,7 @@ function renderRecharges() {
 }
 
 function renderCampaigns() {
+  if (!$("#campaignTableBody")) return;
   const query = $("#campaignSearch").value.trim().toLowerCase();
   const platform = $("#campaignPlatformFilter").value;
   const status = $("#campaignStatusFilter").value;
@@ -1172,15 +1157,12 @@ function bindEvents() {
   $("#dashboardDate").addEventListener("change", renderDashboard);
   $("#quickRecordButton").addEventListener("click", () => openRecordModal());
   $("#addRechargeButton").addEventListener("click", () => openRechargeModal());
-  $("#addCampaignButton").addEventListener("click", () => openCampaignModal());
   $("#addRecordButton").addEventListener("click", () => openRecordModal());
   $("#rechargeForm").addEventListener("submit", handleRechargeSubmit);
   $("#campaignForm").addEventListener("submit", handleCampaignSubmit);
   $("#recordForm").addEventListener("submit", handleRecordSubmit);
   ["#recordSpend", "#recordClicks", "#recordOrders", "#recordRevenue"].forEach((selector) => $(selector).addEventListener("input", updateLiveMetrics));
 
-  ["#campaignSearch", "#campaignPlatformFilter", "#campaignStatusFilter"].forEach((selector) => $(selector).addEventListener("input", renderCampaigns));
-  ["#rechargeSearch", "#rechargeStartDate", "#rechargeEndDate", "#rechargePlatformFilter"].forEach((selector) => $(selector).addEventListener("input", renderRecharges));
   $$('[data-recharge-ledger]').forEach((button) => button.addEventListener("click", () => {
     activeRechargeLedger = button.dataset.rechargeLedger;
     renderRecharges();
@@ -1191,16 +1173,6 @@ function bindEvents() {
     event.target.setCustomValidity("");
   });
   ["#recordSearch", "#recordStartDate", "#recordEndDate", "#recordPlatformFilter"].forEach((selector) => $(selector).addEventListener("input", renderRecords));
-
-  $("#campaignTableBody").addEventListener("click", (event) => {
-    const button = event.target.closest("[data-action]");
-    if (!button) return;
-    const campaign = campaignById(button.dataset.id);
-    if (button.dataset.action === "edit-campaign") openCampaignModal(campaign);
-    if (button.dataset.action === "recharge-campaign") openRechargeModal(null, button.dataset.id);
-    if (button.dataset.action === "record-campaign") openRecordModal(null, button.dataset.id);
-    if (button.dataset.action === "delete-campaign") deleteCampaign(button.dataset.id);
-  });
 
   $("#rechargeTableBody").addEventListener("click", (event) => {
     const button = event.target.closest("[data-action]");
@@ -1232,7 +1204,6 @@ function bindEvents() {
   $("#confirmCancel").addEventListener("click", () => resolveConfirm(false));
   $("#confirmAccept").addEventListener("click", () => resolveConfirm(true));
   $("#exportJsonButton").addEventListener("click", exportJson);
-  $("#exportRechargeCsvButton").addEventListener("click", exportRechargeCsv);
   $("#exportCsvButton").addEventListener("click", exportCsv);
   $("#importJsonInput").addEventListener("change", (event) => importJson(event.target.files[0]));
   $("#resetDemoButton").addEventListener("click", async () => {
@@ -1259,8 +1230,6 @@ function bindEvents() {
 
 function initialize() {
   $("#dashboardDate").value = localDate();
-  $("#rechargeStartDate").value = localDate(-30);
-  $("#rechargeEndDate").value = localDate();
   $("#recordStartDate").value = localDate(-6);
   $("#recordEndDate").value = localDate();
   bindEvents();

@@ -2156,6 +2156,11 @@ body::after {
   outline-offset: 2px;
 }
 
+.compact-ledger-view {
+  width: min(100%, 820px);
+  margin: 0 auto;
+}
+
 .ledger-panel {
   padding: 0;
   overflow: hidden;
@@ -2170,21 +2175,10 @@ body::after {
   border-bottom: 1px solid var(--reference-border);
 }
 
-.ledger-panel-header h3 {
-  margin: 2px 0 0;
+.ledger-panel-header h2 {
+  margin: 0;
   color: var(--reference-text);
   font-size: 18px;
-}
-
-.ledger-panel > .record-summary,
-.ledger-panel > .filter-bar {
-  margin-right: 20px;
-  margin-left: 20px;
-}
-
-.ledger-panel > .record-summary {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  margin-top: 16px;
 }
 
 .ledger-panel table {
@@ -2504,12 +2498,6 @@ tbody tr:hover td {
     align-items: stretch;
     flex-direction: column;
     padding: 18px;
-  }
-
-  .ledger-panel > .record-summary,
-  .ledger-panel > .filter-bar {
-    margin-right: 14px;
-    margin-left: 14px;
   }
 
   .kpi-card {

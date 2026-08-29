@@ -9,7 +9,7 @@
       content="以云端数据为主，支持充值登记、消耗录入与投流报表的管理系统。"
     />
     <title>投流管理系统</title>
-    <link rel="stylesheet" href="styles.css?v=1.2.1" />
+    <link rel="stylesheet" href="styles.css?v=1.2.2" />
   </head>
   <body>
     <div class="app-shell">
@@ -156,15 +156,7 @@
             </article>
           </section>
 
-          <section class="view" id="campaignsView">
-            <div class="section-toolbar">
-              <div>
-                <p class="section-kicker">充值登记</p>
-                <h2>充值端</h2>
-                <p>分别查看充值、付款及待付款明细。</p>
-              </div>
-            </div>
-
+          <section class="view compact-ledger-view" id="campaignsView" data-screen-label="充值端">
             <div class="status-switch" id="rechargeLedgerSwitch" aria-label="充值端业务切换">
               <button class="status-switch-button active" type="button" data-recharge-ledger="recharge">充值记录</button>
               <button class="status-switch-button" type="button" data-recharge-ledger="payment">付款记录</button>
@@ -173,29 +165,8 @@
 
             <article class="panel ledger-panel">
               <div class="ledger-panel-header">
-                <div>
-                  <p class="section-kicker" id="rechargeLedgerKicker">账户充值</p>
-                  <h3 id="rechargeLedgerTitle">充值记录</h3>
-                </div>
-                <div class="toolbar-actions">
-                  <button class="button button-secondary" id="exportRechargeCsvButton">导出当前记录</button>
-                  <button class="button button-primary" id="addRechargeButton">＋ 添加充值记录</button>
-                </div>
-              </div>
-
-              <div class="record-summary" id="rechargeSummary"></div>
-
-              <div class="filter-bar records-filter" id="rechargeFilters">
-                <label class="search-field">
-                  <span aria-hidden="true">⌕</span>
-                  <input type="search" id="rechargeSearch" placeholder="搜索账户名称" />
-                </label>
-                <input type="date" id="rechargeStartDate" aria-label="开始日期" />
-                <span class="range-separator">至</span>
-                <input type="date" id="rechargeEndDate" aria-label="结束日期" />
-                <select id="rechargePlatformFilter" aria-label="按平台筛选">
-                  <option value="all">全部平台</option>
-                </select>
+                <h2 id="rechargeLedgerTitle">充值记录</h2>
+                <button class="button button-primary" id="addRechargeButton">＋ 添加充值记录</button>
               </div>
 
               <div class="table-scroll">
@@ -216,34 +187,6 @@
                 <h3 id="rechargeEmptyTitle">还没有充值记录</h3>
                 <p id="rechargeEmptyCopy">点击“添加充值记录”开始登记。</p>
               </div>
-            </article>
-
-            <div class="subsection-heading">
-              <div>
-                <p class="section-kicker">账户配置</p>
-                <h3>广告账户与投流计划</h3>
-                <p>充值和消耗数据均会关联到这里配置的账户或计划。</p>
-              </div>
-              <button class="button button-secondary" id="addCampaignButton">＋ 新建账户/计划</button>
-            </div>
-
-            <div class="filter-bar">
-              <label class="search-field">
-                <span aria-hidden="true">⌕</span>
-                <input type="search" id="campaignSearch" placeholder="搜索计划、账户或负责人" />
-              </label>
-              <select id="campaignPlatformFilter" aria-label="按平台筛选"><option value="all">全部平台</option></select>
-              <select id="campaignStatusFilter" aria-label="按状态筛选">
-                <option value="all">全部状态</option>
-                <option value="投放中">投放中</option>
-                <option value="已暂停">已暂停</option>
-                <option value="已结束">已结束</option>
-              </select>
-            </div>
-
-            <article class="panel table-panel">
-              <div class="table-scroll"><table><thead><tr><th>账户 / 计划</th><th>平台 / 广告账户</th><th>投放目标</th><th class="number-cell">日预算</th><th class="number-cell">目标 ROI</th><th>负责人</th><th>状态</th><th class="action-cell">操作</th></tr></thead><tbody id="campaignTableBody"></tbody></table></div>
-              <div class="empty-state hidden" id="campaignEmptyState"><div class="empty-icon">◫</div><h3>还没有匹配的广告账户</h3><p>调整筛选条件，或新建一个账户/投流计划。</p></div>
             </article>
           </section>
 
@@ -529,6 +472,6 @@
     </div>
 
     <div class="toast-region" id="toastRegion" aria-live="polite"></div>
-    <script src="app.js?v=1.2.1"></script>
+    <script src="app.js?v=1.2.2"></script>
   </body>
 </html>
