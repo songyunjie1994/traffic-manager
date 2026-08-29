@@ -175,6 +175,7 @@
                     <tr>
                       <th id="rechargeDateHeading">充值日期</th>
                       <th id="rechargeAccountHeading">充值账户</th>
+                      <th id="rechargePayeeHeading">收款方</th>
                       <th class="number-cell" id="rechargeAmountHeading">充值金额</th>
                       <th class="action-cell">操作</th>
                     </tr>
@@ -479,15 +480,15 @@
         <label class="form-field span-3"><span>智谱 API Key（<a href="https://open.bigmodel.cn" target="_blank" rel="noopener">open.bigmodel.cn</a> 免费申请，仅保存在本机浏览器）</span><input id="zhipuApiKey" type="password" autocomplete="off" placeholder="粘贴 API Key，用 GLM-4V 识别付款截图" /></label>
         <div class="form-grid payment-form-grid">
           <label class="form-field"><span>付款日期 *</span><input id="paymentDate" type="date" required /></label>
-          <label class="form-field span-2">
-            <span>付款账户 *</span>
-            <input id="paymentAccountSearch" type="search" list="paymentAccountOptions" autocomplete="off" required placeholder="识别后可搜索修改账户" />
-            <datalist id="paymentAccountOptions"></datalist>
-            <input id="paymentCampaign" type="hidden" />
-          </label>
-          <label class="form-field span-3"><span>付款金额（元）*</span><input id="paymentAmount" type="number" min="0.01" step="0.01" inputmode="decimal" required placeholder="识别后可修改金额" /></label>
+          <label class="form-field"><span>付款金额（元）*</span><input id="paymentAmount" type="number" min="0.01" step="0.01" inputmode="decimal" required placeholder="识别后可修改金额" /></label>
+          <label class="form-field"><span>付款方 *</span><input id="paymentPayer" required maxlength="60" placeholder="识别或手动填写付款方" /></label>
+          <label class="form-field"><span>付款方银行</span><input id="paymentPayerBank" maxlength="60" placeholder="开户行 / 支付渠道，选填" /></label>
+          <label class="form-field"><span>付款方账号</span><input id="paymentPayerAccount" maxlength="40" placeholder="卡号 / 支付账号，选填" /></label>
+          <label class="form-field"><span>收款方 *</span><input id="paymentPayee" required maxlength="60" placeholder="识别或手动填写收款方" /></label>
+          <label class="form-field"><span>收款方银行</span><input id="paymentPayeeBank" maxlength="60" placeholder="开户行 / 支付渠道，选填" /></label>
+          <label class="form-field"><span>收款方账号</span><input id="paymentPayeeAccount" maxlength="40" placeholder="卡号 / 支付账号，选填" /></label>
         </div>
-        <p class="payment-privacy">付款截图由智谱 GLM-4V 大模型识别（需在上方填写你自己的免费 API Key）；确认保存后只同步日期、账户和金额。</p>
+        <p class="payment-privacy">付款截图由智谱 GLM-4V 大模型识别（默认已绑定 API Key，也可在上方填写自己的 Key）；确认保存后同步日期、金额与双方付款信息。</p>
         <div class="modal-actions"><button type="button" class="button button-ghost" data-close-modal="paymentModal">取消</button><button type="submit" class="button button-primary">保存付款记录</button></div>
       </form>
     </div>
@@ -505,6 +506,6 @@
     </div>
 
     <div class="toast-region" id="toastRegion" aria-live="polite"></div>
-    <script src="app.js?v=1.4.0"></script>
+    <script src="app.js?v=1.5.0"></script>
   </body>
 </html>
