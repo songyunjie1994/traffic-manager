@@ -1,7 +1,7 @@
 "use strict";
 
 const STORAGE_KEY = "traffic_manager_data_v1";
-const APP_VERSION = "1.3.1";
+const APP_VERSION = "1.3.2";
 const CLOUD_ROW_ID = 2;
 const RECHARGE_WORKFLOW_VERSION = "2026-08-29-v1";
 const REQUIRED_ACCOUNT_NAMES = ["杭州夕雾", "MELBOURNE", "江西井意", "浏阳市关口韵帆", "ISAMORVAN", "研汁工社"];
@@ -35,6 +35,8 @@ let lastCloudSnapshot = "";
 let lastCloudRefreshAt = 0;
 let activeRechargeLedger = "recharge";
 let paymentOcrResult = null;
+let paymentOcrWorkerPromise = null;
+let paymentOcrReady = false;
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
@@ -751,6 +753,12 @@ function parsePaymentReceipt(text, confidence = 0) {
       break;
     }
   }
+  if (!amount) {
+    const decimalAmounts = [...flattened.matchAll(/(?:^|[^\d])([1-9]\d{0,6}(?:,\d{3})*(?:\.\d{2}))(?!\d)/g)]
+      .map((item) => Number(item[1].replaceAll(",", "")))
+      .filter((value) => Number.isFinite(value) && value > 0);
+    amount = decimalAmounts.sort((a, b) => b - a)[0] || 0;
+  }
   match = flattened.match(/(20\d{2})[-/年.]\s*(\d{1,2})[-/月.]\s*(\d{1,2})/);
   if (match) date = `${match[1]}-${String(match[2]).padStart(2, "0")}-${String(match[3]).padStart(2, "0")}`;
   if (!date) {
@@ -770,6 +778,48 @@ function setPaymentOcrStatus(message, progress = 0, stateName = "working") {
   $("#paymentOcrProgress").style.width = `${percent}%`;
 }
 
+function getPaymentOcrWorker() {
+  if (paymentOcrWorkerPromise) return paymentOcrWorkerPromise;
+  paymentOcrWorkerPromise = window.Tesseract.createWorker("chi_sim", 1, {
+    workerPath: PAYMENT_OCR_ASSETS.workerPath,
+    corePath: PAYMENT_OCR_ASSETS.corePath,
+    langPath: PAYMENT_OCR_ASSETS.langPath,
+    gzip: false,
+    logger: (message) => {
+      const phase = String(message.status || "");
+      const phaseProgress = Number(message.progress || 0);
+      if (phase.includes("tesseract core")) {
+        setPaymentOcrStatus("正在加载识别引擎（首次约需 30–90 秒）…", 0.08 + phaseProgress * 0.18);
+      } else if (phase.includes("language traineddata")) {
+        setPaymentOcrStatus("正在加载中文识别模型…", 0.26 + phaseProgress * 0.36);
+      } else if (phase.includes("initializing")) {
+        setPaymentOcrStatus("正在准备本地识别…", 0.64);
+      } else if (phase === "recognizing text") {
+        setPaymentOcrStatus("正在识别付款信息…", 0.7 + phaseProgress * 0.3);
+      }
+    },
+  }).then((worker) => {
+    paymentOcrReady = true;
+    return worker;
+  }).catch((error) => {
+    paymentOcrWorkerPromise = null;
+    paymentOcrReady = false;
+    throw error;
+  });
+  return paymentOcrWorkerPromise;
+}
+
+function preloadPaymentOcr() {
+  if (paymentOcrReady || paymentOcrWorkerPromise || typeof window.Tesseract === "undefined") return;
+  setPaymentOcrStatus("正在预加载本地识别引擎…", 0.05);
+  getPaymentOcrWorker().then(() => {
+    if (!$("#paymentModal").classList.contains("hidden")) setPaymentOcrStatus("识别引擎已就绪，请选择付款截图", 0.7, "success");
+  }).catch((error) => {
+    console.error(error);
+    if (!$("#paymentModal").classList.contains("hidden")) setPaymentOcrStatus("识别引擎加载失败，请刷新后重试", 1, "error");
+  });
+}
+
 async function recognizePaymentImage(file) {
   if (!file?.type?.startsWith("image/")) {
     toast("请选择付款截图图片", "error");
@@ -786,27 +836,8 @@ async function recognizePaymentImage(file) {
   $("#paymentImageName").textContent = file.name;
   $("#paymentUploadButton").disabled = true;
   setPaymentOcrStatus("正在加载本地识别引擎…", 0.05);
-  let worker = null;
   try {
-    worker = await window.Tesseract.createWorker("chi_sim+eng", 1, {
-      workerPath: PAYMENT_OCR_ASSETS.workerPath,
-      corePath: PAYMENT_OCR_ASSETS.corePath,
-      langPath: PAYMENT_OCR_ASSETS.langPath,
-      gzip: false,
-      logger: (message) => {
-        const phase = String(message.status || "");
-        const phaseProgress = Number(message.progress || 0);
-        if (phase.includes("tesseract core")) {
-          setPaymentOcrStatus("正在加载识别引擎（首次约需 1–3 分钟）…", 0.08 + phaseProgress * 0.18);
-        } else if (phase.includes("language traineddata")) {
-          setPaymentOcrStatus("正在加载中英文识别模型…", 0.26 + phaseProgress * 0.36);
-        } else if (phase.includes("initializing")) {
-          setPaymentOcrStatus("正在准备本地识别…", 0.64);
-        } else if (phase === "recognizing text") {
-          setPaymentOcrStatus("正在识别付款信息…", 0.7 + phaseProgress * 0.3);
-        }
-      },
-    });
+    const worker = await getPaymentOcrWorker();
     const { data } = await worker.recognize(file);
     const parsed = parsePaymentReceipt(data.text || "", data.confidence || 0);
     paymentOcrResult = parsed;
@@ -822,7 +853,6 @@ async function recognizePaymentImage(file) {
     console.error(error);
     setPaymentOcrStatus("识别失败，可手动填写后保存", 1, "error");
   } finally {
-    if (worker) await worker.terminate().catch(() => {});
     $("#paymentUploadButton").disabled = false;
   }
 }
@@ -1018,6 +1048,7 @@ function openPaymentModal(payment = null) {
   $("#paymentAccountSearch").setCustomValidity("");
   $("#paymentAmount").value = payment?.amount ?? "";
   showModal("paymentModal");
+  preloadPaymentOcr();
 }
 
 function openRecordModal(record = null, campaignId = null) {
