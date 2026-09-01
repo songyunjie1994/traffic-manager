@@ -19,6 +19,210 @@
   --radius-small: 9px;
 }
 
+/* 千川实时数据看板 */
+.qianchuan-dashboard-card {
+  margin-top: 18px;
+  padding: 24px;
+  overflow: hidden;
+}
+
+.qianchuan-dashboard-heading {
+  display: flex;
+  gap: 18px;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.qianchuan-dashboard-heading h3 {
+  margin: 5px 0 0;
+}
+
+.qianchuan-dashboard-heading p:last-child {
+  margin: 7px 0 0;
+  color: var(--reference-muted, var(--muted));
+  font-size: 12px;
+  line-height: 1.65;
+}
+
+.qianchuan-dashboard-access {
+  display: grid;
+  grid-template-columns: minmax(280px, 520px) auto;
+  gap: 12px;
+  align-items: end;
+  margin-top: 22px;
+  padding: 18px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+}
+
+.qianchuan-dashboard-access > p {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: var(--reference-muted, var(--muted));
+  font-size: 11px;
+}
+
+.qianchuan-dashboard-filters {
+  display: grid;
+  grid-template-columns: minmax(220px, 1.4fr) minmax(150px, 0.65fr) minmax(150px, 0.65fr) auto;
+  gap: 12px;
+  align-items: end;
+  margin-top: 22px;
+}
+
+.qianchuan-dashboard-filters .button,
+.qianchuan-dashboard-access .button {
+  min-height: 43px;
+}
+
+.qianchuan-dashboard-status {
+  margin-top: 16px;
+  padding: 10px 12px;
+  color: #475569;
+  font-size: 12px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+}
+
+.qianchuan-dashboard-status[data-state="loading"] {
+  color: #4338ca;
+  background: #eef2ff;
+  border-color: #c7d2fe;
+}
+
+.qianchuan-dashboard-status[data-state="success"] {
+  color: #17633a;
+  background: #f0fdf4;
+  border-color: #bbf7d0;
+}
+
+.qianchuan-dashboard-status[data-state="error"] {
+  color: #b42318;
+  background: #fff7f7;
+  border-color: #fecaca;
+}
+
+.qianchuan-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.qianchuan-metrics article {
+  display: grid;
+  gap: 5px;
+  padding: 18px;
+  background: linear-gradient(145deg, #ffffff, #f8fafc);
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+}
+
+.qianchuan-metrics span,
+.qianchuan-metrics small {
+  color: var(--reference-muted, var(--muted));
+  font-size: 11px;
+}
+
+.qianchuan-metrics strong {
+  color: #172033;
+  font-size: clamp(20px, 2.2vw, 28px);
+  font-weight: 780;
+  letter-spacing: -0.03em;
+}
+
+.qianchuan-table-wrap {
+  margin-top: 16px;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+}
+
+.qianchuan-data-table {
+  min-width: 960px;
+}
+
+.qianchuan-data-table td,
+.qianchuan-data-table th {
+  white-space: nowrap;
+}
+
+.qianchuan-account-cell {
+  display: grid;
+  gap: 3px;
+  min-width: 190px;
+}
+
+.qianchuan-account-cell strong {
+  color: #172033;
+}
+
+.qianchuan-account-cell span {
+  color: var(--reference-muted, var(--muted));
+  font-family: Consolas, monospace;
+  font-size: 11px;
+}
+
+.qianchuan-row-status {
+  display: inline-flex;
+  padding: 4px 8px;
+  color: #17633a;
+  font-size: 11px;
+  font-weight: 700;
+  background: #e9f8ef;
+  border-radius: 999px;
+}
+
+.qianchuan-row-status.is-error {
+  color: #b42318;
+  background: #fee2e2;
+}
+
+.qianchuan-data-note {
+  margin: 12px 0 0;
+  color: var(--reference-muted, var(--muted));
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+@media (max-width: 980px) {
+  .qianchuan-dashboard-filters {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .qianchuan-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 620px) {
+  .qianchuan-dashboard-card {
+    padding: 18px;
+  }
+
+  .qianchuan-dashboard-heading,
+  .qianchuan-dashboard-access {
+    grid-template-columns: 1fr;
+  }
+
+  .qianchuan-dashboard-heading {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .qianchuan-dashboard-heading .button,
+  .qianchuan-dashboard-access .button,
+  .qianchuan-dashboard-filters .button {
+    width: 100%;
+  }
+
+  .qianchuan-dashboard-filters,
+  .qianchuan-metrics {
+    grid-template-columns: 1fr;
+  }
+}
+
 * {
   box-sizing: border-box;
 }

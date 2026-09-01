@@ -1,7 +1,7 @@
 "use strict";
 
 const STORAGE_KEY = "traffic_manager_data_v1";
-const APP_VERSION = "1.6.0";
+const APP_VERSION = "1.7.0";
 const CLOUD_ROW_ID = 2;
 const RECHARGE_WORKFLOW_VERSION = "2026-08-29-v1";
 const REQUIRED_ACCOUNT_NAMES = ["杭州夕雾", "MELBOURNE", "江西井意", "浏阳市关口韵帆", "ISAMORVAN", "研汁工社"];
@@ -23,6 +23,8 @@ const CLOUD_CONFIG = Object.freeze({
 });
 const QIANCHUAN_CONFIG = Object.freeze({
   startUrl: `${CLOUD_CONFIG.url}/functions/v1/qianchuan-oauth-start`,
+  dataUrl: `${CLOUD_CONFIG.url}/functions/v1/qianchuan-data`,
+  dashboardKeyStorageKey: "traffic_manager_qianchuan_dashboard_key",
 });
 const PLATFORMS = ["巨量引擎", "千川", "小红书", "视频号", "快手", "百度", "其他"];
 const VIEW_META = {
@@ -41,6 +43,8 @@ let lastCloudSnapshot = "";
 let lastCloudRefreshAt = 0;
 let activeRechargeLedger = "recharge";
 let paymentOcrResult = null;
+let qianchuanDashboardLoading = false;
+let qianchuanPreferredCustomer = new URLSearchParams(window.location.search).get("customer") || "";
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
@@ -560,6 +564,221 @@ async function copyQianchuanAuthorizationLink() {
     $("#qianchuanAuthorizationLink").select();
     toast("请按 Ctrl+C 复制授权链接", "error");
   }
+}
+
+function getQianchuanDashboardKey() {
+  try {
+    return sessionStorage.getItem(QIANCHUAN_CONFIG.dashboardKeyStorageKey) || "";
+  } catch (error) {
+    return "";
+  }
+}
+
+function saveQianchuanDashboardKey(value) {
+  try {
+    sessionStorage.setItem(QIANCHUAN_CONFIG.dashboardKeyStorageKey, value);
+    return true;
+  } catch (error) {
+    return false;
+  }
+}
+
+function clearQianchuanDashboardKey() {
+  try {
+    sessionStorage.removeItem(QIANCHUAN_CONFIG.dashboardKeyStorageKey);
+  } catch (error) {
+    // sessionStorage may be disabled; the key is never persisted elsewhere.
+  }
+}
+
+function setQianchuanDashboardUnlocked(unlocked) {
+  $("#qianchuanDashboardAccessForm").classList.toggle("hidden", unlocked);
+  $("#qianchuanDashboard").classList.toggle("hidden", !unlocked);
+  $("#qianchuanLockButton").classList.toggle("hidden", !unlocked);
+  if (!unlocked) {
+    $("#qianchuanDashboardKey").value = "";
+    $("#qianchuanDashboardKey").focus();
+  }
+}
+
+function setQianchuanDashboardStatus(message, stateName = "idle") {
+  const status = $("#qianchuanDashboardStatus");
+  status.textContent = message;
+  status.dataset.state = stateName;
+}
+
+function qianchuanErrorMessage(errorCode) {
+  const messages = {
+    unauthorized: "看板访问密码不正确，请重新输入。",
+    customer_not_found: "没有找到该客户的授权记录，请让客户重新授权。",
+    authorization_expired: "该客户授权已过期，请重新发送授权链接。",
+    invalid_customer: "客户编号格式不正确。",
+    invalid_date_range: "日期范围需为 1 至 31 天。",
+    server_not_configured: "云端看板尚未配置完成。",
+    upstream_request_failed: "千川接口暂时未能返回数据，请稍后重试或检查账户权限。",
+  };
+  return messages[errorCode] || "数据读取失败，请稍后重试。";
+}
+
+async function qianchuanRequest(payload) {
+  const dashboardKey = getQianchuanDashboardKey();
+  if (!dashboardKey) throw new Error("unauthorized");
+  const response = await fetch(QIANCHUAN_CONFIG.dataUrl, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Dashboard-Key": dashboardKey,
+    },
+    body: JSON.stringify(payload),
+  });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const errorCode = result?.error || "request_failed";
+    if (response.status === 401) {
+      clearQianchuanDashboardKey();
+      setQianchuanDashboardUnlocked(false);
+    }
+    throw new Error(errorCode);
+  }
+  return result;
+}
+
+function renderQianchuanCustomers(customers) {
+  const select = $("#qianchuanCustomerSelect");
+  const current = select.value || qianchuanPreferredCustomer;
+  select.innerHTML = customers.map((customer) => {
+    const count = Math.max(0, Number(customer.accountCount || 0));
+    const label = `${customer.customerKey}${count ? ` · ${count} 个账户` : ""}`;
+    return `<option value="${escapeHtml(customer.customerKey)}">${escapeHtml(label)}</option>`;
+  }).join("");
+  const matched = customers.some((customer) => customer.customerKey === current);
+  if (matched) select.value = current;
+  select.disabled = customers.length === 0;
+  $("#qianchuanRefreshButton").disabled = customers.length === 0;
+  qianchuanPreferredCustomer = select.value || "";
+}
+
+function renderQianchuanDashboard(data) {
+  const summary = data?.summary || {};
+  const accounts = Array.isArray(data?.accounts) ? data.accounts : [];
+  $("#qianchuanMetricSpend").textContent = money(summary.spend, 2);
+  $("#qianchuanMetricGmv").textContent = money(summary.gmv, 2);
+  $("#qianchuanMetricRoi").textContent = Number(summary.roi || 0).toFixed(2);
+  $("#qianchuanMetricAccounts").textContent = number(summary.accountCount || 0);
+  $("#qianchuanMetricAccountHint").textContent = summary.failedAccountCount
+    ? `${number(summary.successfulAccountCount || 0)} 个读取成功`
+    : "全部读取成功";
+
+  $("#qianchuanAccountTableBody").innerHTML = accounts.map((account) => {
+    const failed = account.status !== "ok";
+    const metric = (value, formatter) => failed ? "—" : formatter(value);
+    return `<tr>
+      <td><div class="qianchuan-account-cell"><strong>${escapeHtml(account.advertiserName || "未命名账户")}</strong><span>${escapeHtml(account.advertiserId)}</span></div></td>
+      <td>${metric(account.spend, (value) => money(value, 2))}</td>
+      <td>${metric(account.gmv, (value) => money(value, 2))}</td>
+      <td>${metric(account.roi, (value) => Number(value || 0).toFixed(2))}</td>
+      <td>${metric(account.directGmv, (value) => money(value, 2))}</td>
+      <td>${metric(account.orders, number)}</td>
+      <td>${metric(account.clicks, number)}</td>
+      <td><span class="qianchuan-row-status ${failed ? "is-error" : ""}">${failed ? "读取失败" : "正常"}</span></td>
+    </tr>`;
+  }).join("");
+  $("#qianchuanAccountEmptyState").classList.toggle("hidden", accounts.length > 0);
+
+  const refreshTime = data?.refreshedAt ? new Date(data.refreshedAt).toLocaleString("zh-CN", { hour12: false }) : "刚刚";
+  const unsupported = data?.warnings?.unsupportedAuthorizationTypes || [];
+  const notes = [`数据来自巨量引擎 Marketing API，更新时间 ${refreshTime}`];
+  if (data?.warnings?.partial) notes.push("部分账户读取失败，汇总只包含读取成功的账户");
+  if (unsupported.length) notes.push(`另有 ${unsupported.length} 类管理账号暂不支持自动展开`);
+  $("#qianchuanDataNote").textContent = `${notes.join("；")}。`;
+}
+
+async function loadQianchuanCustomers(autoLoad = true) {
+  setQianchuanDashboardStatus("正在读取已授权客户…", "loading");
+  try {
+    const result = await qianchuanRequest({ action: "customers" });
+    const customers = Array.isArray(result.customers) ? result.customers : [];
+    renderQianchuanCustomers(customers);
+    if (!customers.length) {
+      setQianchuanDashboardStatus("还没有客户授权记录，请先生成授权链接。", "error");
+      renderQianchuanDashboard({ summary: {}, accounts: [], warnings: {} });
+      return;
+    }
+    setQianchuanDashboardStatus(`已读取 ${customers.length} 个授权客户。`, "success");
+    if (autoLoad) await loadQianchuanDashboard();
+  } catch (error) {
+    const message = qianchuanErrorMessage(error.message);
+    setQianchuanDashboardStatus(message, "error");
+    toast(message, "error");
+  }
+}
+
+async function loadQianchuanDashboard() {
+  if (qianchuanDashboardLoading) return;
+  const customerKey = $("#qianchuanCustomerSelect").value;
+  const startDate = $("#qianchuanStartDate").value;
+  const endDate = $("#qianchuanEndDate").value;
+  if (!customerKey) return;
+
+  const rangeDays = Math.floor((new Date(`${endDate}T00:00:00`) - new Date(`${startDate}T00:00:00`)) / 86400000) + 1;
+  if (!Number.isFinite(rangeDays) || rangeDays < 1 || rangeDays > 31) {
+    setQianchuanDashboardStatus("日期范围需为 1 至 31 天。", "error");
+    return;
+  }
+
+  qianchuanDashboardLoading = true;
+  $("#qianchuanRefreshButton").disabled = true;
+  setQianchuanDashboardStatus(`正在读取 ${customerKey} 的千川账户和报表…`, "loading");
+  try {
+    const data = await qianchuanRequest({ action: "dashboard", customerKey, startDate, endDate });
+    renderQianchuanDashboard(data);
+    const failedCount = Number(data?.summary?.failedAccountCount || 0);
+    setQianchuanDashboardStatus(
+      failedCount ? `数据已更新，其中 ${failedCount} 个账户读取失败。` : "千川数据已更新。",
+      failedCount ? "error" : "success",
+    );
+  } catch (error) {
+    const message = qianchuanErrorMessage(error.message);
+    setQianchuanDashboardStatus(message, "error");
+    toast(message, "error");
+  } finally {
+    qianchuanDashboardLoading = false;
+    $("#qianchuanRefreshButton").disabled = !$("#qianchuanCustomerSelect").value;
+  }
+}
+
+async function handleQianchuanDashboardAccess(event) {
+  event.preventDefault();
+  const input = $("#qianchuanDashboardKey");
+  const dashboardKey = input.value;
+  if (dashboardKey.length < 16) {
+    input.setCustomValidity("访问密码至少 16 个字符");
+    input.reportValidity();
+    return;
+  }
+  input.setCustomValidity("");
+  if (!saveQianchuanDashboardKey(dashboardKey)) {
+    toast("浏览器无法保存本次会话密码，请检查隐私设置。", "error");
+    return;
+  }
+  input.value = "";
+  setQianchuanDashboardUnlocked(true);
+  await loadQianchuanCustomers(true);
+}
+
+function lockQianchuanDashboard() {
+  clearQianchuanDashboardKey();
+  setQianchuanDashboardUnlocked(false);
+  renderQianchuanDashboard({ summary: {}, accounts: [], warnings: {} });
+  toast("千川数据看板已锁定");
+}
+
+function initializeQianchuanDashboard() {
+  $("#qianchuanStartDate").value = localDate(-6);
+  $("#qianchuanEndDate").value = localDate();
+  const unlocked = Boolean(getQianchuanDashboardKey());
+  setQianchuanDashboardUnlocked(unlocked);
+  if (unlocked) loadQianchuanCustomers(true);
 }
 
 function renderSelectOptions() {
@@ -1456,6 +1675,11 @@ function bindEvents() {
   $("#qianchuanAuthorizeForm").addEventListener("submit", handleQianchuanAuthorize);
   $("#qianchuanCustomerKey").addEventListener("input", (event) => event.target.setCustomValidity(""));
   $("#copyQianchuanLinkButton").addEventListener("click", copyQianchuanAuthorizationLink);
+  $("#qianchuanDashboardAccessForm").addEventListener("submit", handleQianchuanDashboardAccess);
+  $("#qianchuanDashboardKey").addEventListener("input", (event) => event.target.setCustomValidity(""));
+  $("#qianchuanRefreshButton").addEventListener("click", loadQianchuanDashboard);
+  $("#qianchuanCustomerSelect").addEventListener("change", loadQianchuanDashboard);
+  $("#qianchuanLockButton").addEventListener("click", lockQianchuanDashboard);
   $("#addRechargeButton").addEventListener("click", () => activeRechargeLedger === "payment" ? openPaymentModal() : openRechargeModal());
   $("#addRecordButton").addEventListener("click", () => openRecordModal());
   $("#rechargeForm").addEventListener("submit", handleRechargeSubmit);
@@ -1553,6 +1777,7 @@ function initialize() {
   $("#recordEndDate").value = localDate();
   bindEvents();
   renderAll();
+  initializeQianchuanDashboard();
   cloudInitializationPromise = initializeCloud();
 }
 

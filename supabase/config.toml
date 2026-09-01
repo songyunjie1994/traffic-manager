@@ -1,0 +1,10 @@
+project_id = "mabxdkjqilulkrmqrrgo"
+
+[functions.qianchuan-oauth-start]
+verify_jwt = false
+
+[functions.qianchuan-oauth-callback]
+verify_jwt = false
+
+[functions.qianchuan-data]
+verify_jwt = false

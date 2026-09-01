@@ -14,6 +14,7 @@
 - 云端存储：确认保存后的结构化业务数据同步到 Supabase，浏览器保留缓存
 - 数据迁移：完整 JSON 备份/恢复，充值与消耗筛选结果 CSV 导出
 - 响应式界面：支持电脑和手机浏览器
+- 千川数据看板：切换已授权客户，自动展开工作台内的千川账户，并汇总消耗、7 日归因成交金额、ROI、订单与点击
 
 ## 数据说明
 
@@ -30,13 +31,23 @@
 - `QIANCHUAN_APP_ID`
 - `QIANCHUAN_APP_SECRET`
 - `QIANCHUAN_STATE_SECRET`（至少 32 个随机字符）
+- `QIANCHUAN_DASHBOARD_KEY`（至少 16 个字符，仅用于管理员进入数据看板）
 - `QIANCHUAN_ALLOWED_RETURN_ORIGINS=https://songyunjie1994.github.io`
 
 回调地址固定为：
 
 `https://mabxdkjqilulkrmqrrgo.supabase.co/functions/v1/qianchuan-oauth-callback`
 
-首次部署需执行迁移，再部署 `qianchuan-oauth-start` 与 `qianchuan-oauth-callback` 两个函数。任何日志、报错或前端页面都不得输出 Token 或 `App Secret`。
+首次部署需执行迁移，再部署 `qianchuan-oauth-start`、`qianchuan-oauth-callback` 与 `qianchuan-data` 三个函数。`qianchuan-data` 关闭 Supabase JWT 校验，但强制校验自定义的 `X-Dashboard-Key` 请求头，并只允许配置过的前端来源跨域访问。看板密码只存入浏览器 `sessionStorage`，不会写入源码、网址或长期缓存。
+
+数据口径：
+
+- 消耗：`stat_cost`
+- 成交金额：`all_order_pay_gmv_7days`（7 日归因总成交金额）
+- ROI：7 日归因总成交金额 ÷ 消耗
+- 明细同时展示 `pay_order_amount`（直接成交金额）
+
+任何日志、报错或前端页面都不得输出 Token 或 `App Secret`。
 
 ## 本地运行
 

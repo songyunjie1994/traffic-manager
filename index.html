@@ -9,7 +9,7 @@
       content="以云端数据为主，支持充值登记、消耗录入与投流报表的管理系统。"
     />
     <title>投流管理系统</title>
-    <link rel="stylesheet" href="styles.css?v=1.6.0" />
+    <link rel="stylesheet" href="styles.css?v=1.7.0" />
   </head>
   <body>
     <div class="app-shell">
@@ -308,6 +308,68 @@
               </div>
             </article>
 
+            <article class="panel qianchuan-dashboard-card">
+              <div class="qianchuan-dashboard-heading">
+                <div>
+                  <p class="section-kicker">实时数据看板</p>
+                  <h3>客户消耗与成交</h3>
+                  <p>切换已授权客户，查看千川账户的消耗、7 日归因成交金额与 ROI。</p>
+                </div>
+                <button class="button button-ghost hidden" id="qianchuanLockButton" type="button">锁定看板</button>
+              </div>
+
+              <form class="qianchuan-dashboard-access" id="qianchuanDashboardAccessForm">
+                <label class="form-field">
+                  <span>看板访问密码 *</span>
+                  <input id="qianchuanDashboardKey" type="password" required minlength="16" autocomplete="current-password" placeholder="输入 Supabase 中配置的看板密码" />
+                </label>
+                <button class="button button-primary" type="submit">进入数据看板</button>
+                <p>密码只保存在当前浏览器标签页，关闭标签页后自动清除。</p>
+              </form>
+
+              <div class="qianchuan-dashboard hidden" id="qianchuanDashboard">
+                <div class="qianchuan-dashboard-filters">
+                  <label class="form-field qianchuan-customer-field">
+                    <span>客户</span>
+                    <select id="qianchuanCustomerSelect"></select>
+                  </label>
+                  <label class="form-field">
+                    <span>开始日期</span>
+                    <input id="qianchuanStartDate" type="date" required />
+                  </label>
+                  <label class="form-field">
+                    <span>结束日期</span>
+                    <input id="qianchuanEndDate" type="date" required />
+                  </label>
+                  <button class="button button-primary" id="qianchuanRefreshButton" type="button">刷新数据</button>
+                </div>
+
+                <div class="qianchuan-dashboard-status" id="qianchuanDashboardStatus" data-state="idle" aria-live="polite">等待读取千川数据</div>
+
+                <div class="qianchuan-metrics">
+                  <article><span>消耗</span><strong id="qianchuanMetricSpend">¥0.00</strong><small>所选日期内</small></article>
+                  <article><span>成交金额</span><strong id="qianchuanMetricGmv">¥0.00</strong><small>7 日归因总成交</small></article>
+                  <article><span>ROI</span><strong id="qianchuanMetricRoi">0.00</strong><small>成交金额 ÷ 消耗</small></article>
+                  <article><span>千川账户</span><strong id="qianchuanMetricAccounts">0</strong><small id="qianchuanMetricAccountHint">已授权账户</small></article>
+                </div>
+
+                <div class="table-wrap qianchuan-table-wrap">
+                  <table class="data-table qianchuan-data-table">
+                    <thead>
+                      <tr><th>千川账户</th><th>消耗</th><th>7日成交金额</th><th>ROI</th><th>直接成交金额</th><th>成交订单</th><th>点击</th><th>状态</th></tr>
+                    </thead>
+                    <tbody id="qianchuanAccountTableBody"></tbody>
+                  </table>
+                  <div class="empty-state hidden" id="qianchuanAccountEmptyState">
+                    <div class="empty-icon">千</div>
+                    <h3>还没有可展示的千川账户</h3>
+                    <p>请确认客户授权时已勾选工作台内的千川账户。</p>
+                  </div>
+                </div>
+                <p class="qianchuan-data-note" id="qianchuanDataNote">数据来自巨量引擎 Marketing API。</p>
+              </div>
+            </article>
+
             <article class="panel qianchuan-security-card">
               <div>
                 <p class="section-kicker">安全说明</p>
@@ -576,6 +638,6 @@
     </div>
 
     <div class="toast-region" id="toastRegion" aria-live="polite"></div>
-    <script src="app.js?v=1.6.0"></script>
+    <script src="app.js?v=1.7.0"></script>
   </body>
 </html>
