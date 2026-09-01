@@ -1674,11 +1674,198 @@ body::after {
 
 .nav-list {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 0;
   width: min(100%, 520px);
   margin: 0 auto;
   padding: 0;
+}
+
+/* 巨量千川客户授权 */
+.qianchuan-heading {
+  margin-bottom: 18px;
+}
+
+.qianchuan-service-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 6px 12px;
+  color: #17633a;
+  font-size: 12px;
+  font-weight: 700;
+  background: #e9f8ef;
+  border: 1px solid #c8ecd5;
+  border-radius: 999px;
+}
+
+.qianchuan-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(280px, 0.65fr);
+  gap: 18px;
+}
+
+.qianchuan-connect-card,
+.qianchuan-steps-card,
+.qianchuan-result-card,
+.qianchuan-security-card {
+  padding: 24px;
+}
+
+.qianchuan-connect-card h3,
+.qianchuan-steps-card h3,
+.qianchuan-result-card h3,
+.qianchuan-security-card h3 {
+  margin: 5px 0 0;
+}
+
+.qianchuan-card-icon,
+.qianchuan-result-icon {
+  display: grid;
+  width: 44px;
+  height: 44px;
+  margin-bottom: 16px;
+  color: #4f46e5;
+  font-size: 22px;
+  font-weight: 800;
+  background: #eef2ff;
+  border-radius: 12px;
+  place-items: center;
+}
+
+.qianchuan-card-copy {
+  margin: 9px 0 0;
+  color: var(--reference-muted, var(--muted));
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+.qianchuan-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: end;
+  margin-top: 22px;
+}
+
+.qianchuan-form .button {
+  min-height: 43px;
+}
+
+.qianchuan-link-panel {
+  margin-top: 18px;
+  padding: 16px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+}
+
+.qianchuan-link-panel input {
+  width: 100%;
+  font-family: Consolas, monospace;
+  font-size: 11px;
+}
+
+.qianchuan-link-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.qianchuan-link-actions a {
+  text-decoration: none;
+}
+
+.qianchuan-steps {
+  display: grid;
+  gap: 18px;
+  margin: 20px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.qianchuan-steps li {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+}
+
+.qianchuan-steps li > span {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  color: #4f46e5;
+  font-size: 12px;
+  font-weight: 800;
+  background: #eef2ff;
+  border-radius: 50%;
+  place-items: center;
+}
+
+.qianchuan-steps strong {
+  font-size: 13px;
+}
+
+.qianchuan-steps p,
+.qianchuan-result-card p:not(.section-kicker),
+.qianchuan-security-card > p {
+  margin: 5px 0 0;
+  color: var(--reference-muted, var(--muted));
+  font-size: 12px;
+  line-height: 1.65;
+}
+
+.qianchuan-result-card {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  margin-top: 18px;
+  border-color: #bbebcd;
+  background: #f3fbf6;
+}
+
+.qianchuan-result-card .qianchuan-result-icon {
+  flex: 0 0 44px;
+  margin: 0;
+  color: #17633a;
+  background: #ddf6e6;
+}
+
+.qianchuan-result-card.is-error {
+  border-color: #fecaca;
+  background: #fff7f7;
+}
+
+.qianchuan-result-card.is-error .qianchuan-result-icon {
+  color: #b42318;
+  background: #fee2e2;
+}
+
+.qianchuan-security-card {
+  display: flex;
+  gap: 24px;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 18px;
+}
+
+.qianchuan-security-card > p {
+  max-width: 680px;
+  margin: 0;
+  text-align: right;
+}
+
+@media (max-width: 860px) {
+  .qianchuan-grid { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 620px) {
+  .qianchuan-form { grid-template-columns: 1fr; }
+  .qianchuan-link-actions { flex-direction: column; }
+  .qianchuan-link-actions .button { justify-content: center; width: 100%; }
+  .qianchuan-security-card { align-items: flex-start; flex-direction: column; }
+  .qianchuan-security-card > p { text-align: left; }
 }
 
 .nav-item,

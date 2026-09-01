@@ -1,7 +1,7 @@
 "use strict";
 
 const STORAGE_KEY = "traffic_manager_data_v1";
-const APP_VERSION = "1.5.0";
+const APP_VERSION = "1.6.0";
 const CLOUD_ROW_ID = 2;
 const RECHARGE_WORKFLOW_VERSION = "2026-08-29-v1";
 const REQUIRED_ACCOUNT_NAMES = ["杭州夕雾", "MELBOURNE", "江西井意", "浏阳市关口韵帆", "ISAMORVAN", "研汁工社"];
@@ -21,11 +21,15 @@ const CLOUD_CONFIG = Object.freeze({
   url: "https://mabxdkjqilulkrmqrrgo.supabase.co",
   publishableKey: "sb_publishable_lfHpd1y1gCaQIDXfRkD_8w_O1bPMWGx",
 });
+const QIANCHUAN_CONFIG = Object.freeze({
+  startUrl: `${CLOUD_CONFIG.url}/functions/v1/qianchuan-oauth-start`,
+});
 const PLATFORMS = ["巨量引擎", "千川", "小红书", "视频号", "快手", "百度", "其他"];
 const VIEW_META = {
   dashboard: ["查看充值、消耗与账户余额汇总", "报表端"],
   campaigns: ["管理充值、付款与待付款记录", "充值端"],
   records: ["记录每日消耗和成交数据", "消耗端"],
+  qianchuan: ["管理客户授权与千川账号接入", "千川授权"],
   backup: ["导出、恢复与管理云端数据", "数据备份"],
 };
 
@@ -493,7 +497,69 @@ function renderAll() {
   renderRecharges();
   renderCampaigns();
   renderRecords();
+  renderQianchuanResult();
   renderBackup();
+}
+
+function buildQianchuanAuthorizationLink(customerKey) {
+  const returnTo = `${window.location.origin}${window.location.pathname}`;
+  const url = new URL(QIANCHUAN_CONFIG.startUrl);
+  url.searchParams.set("customer", customerKey);
+  url.searchParams.set("return_to", returnTo);
+  return url.toString();
+}
+
+function renderQianchuanResult() {
+  const resultCard = $("#qianchuanResultCard");
+  if (!resultCard) return;
+  const params = new URLSearchParams(window.location.search);
+  const result = params.get("qianchuan");
+  if (!result) return;
+
+  const customer = params.get("customer") || "当前客户";
+  const accountCount = Math.max(0, Number(params.get("accounts") || 0));
+  const success = result === "success";
+  resultCard.classList.remove("hidden", "is-error");
+  resultCard.classList.toggle("is-error", !success);
+  $("#qianchuanResultIcon").textContent = success ? "✓" : "!";
+  $("#qianchuanResultTitle").textContent = success ? "千川授权成功" : "千川授权未完成";
+  $("#qianchuanResultMessage").textContent = success
+    ? `${customer} 已完成授权${accountCount ? `，共接入 ${accountCount} 个账户` : ""}。`
+    : "授权信息未能安全保存，请重新生成链接后再试。";
+  switchView("qianchuan");
+
+  const cleanUrl = new URL(window.location.href);
+  ["qianchuan", "customer", "accounts", "reason"].forEach((key) => cleanUrl.searchParams.delete(key));
+  window.history.replaceState({}, "", cleanUrl);
+}
+
+function handleQianchuanAuthorize(event) {
+  event.preventDefault();
+  const input = $("#qianchuanCustomerKey");
+  const customerKey = input.value.trim();
+  if (!/^[A-Za-z0-9_-]{1,64}$/.test(customerKey)) {
+    input.setCustomValidity("仅支持字母、数字、短横线和下划线");
+    input.reportValidity();
+    return;
+  }
+  input.setCustomValidity("");
+  const authorizationLink = buildQianchuanAuthorizationLink(customerKey);
+  $("#qianchuanAuthorizationLink").value = authorizationLink;
+  $("#openQianchuanLinkButton").href = authorizationLink;
+  $("#qianchuanLinkPanel").classList.remove("hidden");
+  toast("客户授权链接已生成");
+}
+
+async function copyQianchuanAuthorizationLink() {
+  const link = $("#qianchuanAuthorizationLink").value;
+  if (!link) return;
+  try {
+    await navigator.clipboard.writeText(link);
+    toast("授权链接已复制，可发送给客户");
+  } catch (error) {
+    $("#qianchuanAuthorizationLink").select();
+    toast("请按 Ctrl+C 复制授权链接", "error");
+  }
 }
 
 function renderSelectOptions() {
@@ -1387,6 +1453,9 @@ function bindEvents() {
   $("#menuButton").addEventListener("click", () => $("#sidebar").classList.toggle("open"));
   $("#dashboardDate").addEventListener("change", renderDashboard);
   $("#quickRecordButton").addEventListener("click", () => openRecordModal());
+  $("#qianchuanAuthorizeForm").addEventListener("submit", handleQianchuanAuthorize);
+  $("#qianchuanCustomerKey").addEventListener("input", (event) => event.target.setCustomValidity(""));
+  $("#copyQianchuanLinkButton").addEventListener("click", copyQianchuanAuthorizationLink);
   $("#addRechargeButton").addEventListener("click", () => activeRechargeLedger === "payment" ? openPaymentModal() : openRechargeModal());
   $("#addRecordButton").addEventListener("click", () => openRecordModal());
   $("#rechargeForm").addEventListener("submit", handleRechargeSubmit);

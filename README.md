@@ -21,6 +21,23 @@
 
 云端不可用时页面只显示本地缓存并禁止修改，避免本地数据覆盖云端。
 
+## 巨量千川客户授权
+
+“千川授权”页面通过 Supabase Edge Functions 发起 OAuth，客户在巨量千川官方页面选择账户。`App Secret`、`Access Token` 和 `Refresh Token` 不进入 GitHub Pages，仅由云端回调函数写入启用 RLS 且未开放客户端策略的 `qianchuan_authorizations` 表。
+
+需要在 Supabase 项目中配置以下函数密钥：
+
+- `QIANCHUAN_APP_ID`
+- `QIANCHUAN_APP_SECRET`
+- `QIANCHUAN_STATE_SECRET`（至少 32 个随机字符）
+- `QIANCHUAN_ALLOWED_RETURN_ORIGINS=https://songyunjie1994.github.io`
+
+回调地址固定为：
+
+`https://mabxdkjqilulkrmqrrgo.supabase.co/functions/v1/qianchuan-oauth-callback`
+
+首次部署需执行迁移，再部署 `qianchuan-oauth-start` 与 `qianchuan-oauth-callback` 两个函数。任何日志、报错或前端页面都不得输出 Token 或 `App Secret`。
+
 ## 本地运行
 
 可以直接打开 `index.html`，也可以在本目录启动任意静态文件服务器。

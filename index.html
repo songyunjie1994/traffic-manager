@@ -9,7 +9,7 @@
       content="以云端数据为主，支持充值登记、消耗录入与投流报表的管理系统。"
     />
     <title>投流管理系统</title>
-    <link rel="stylesheet" href="styles.css?v=1.3.0" />
+    <link rel="stylesheet" href="styles.css?v=1.6.0" />
   </head>
   <body>
     <div class="app-shell">
@@ -42,6 +42,10 @@
           <button class="nav-item active" data-view="dashboard">
             <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 19V11h3v8H5Zm5.5 0V5h3v14h-3Zm5.5 0v-6h3v6h-3Z" /></svg></span>
             报表端
+          </button>
+          <button class="nav-item" data-view="qianchuan">
+            <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M9.5 14.5 14.5 9M7.2 16.8l-1.4 1.4a3.4 3.4 0 0 1-4.8-4.8l3.2-3.2A3.4 3.4 0 0 1 9 10.1M16.8 7.2l1.4-1.4A3.4 3.4 0 0 1 23 10.6l-3.2 3.2a3.4 3.4 0 0 1-4.8.1" /></svg></span>
+            千川授权
           </button>
         </nav>
 
@@ -244,6 +248,72 @@
                 <h3>当前范围没有数据</h3>
                 <p>调整日期范围，或录入一条新的投流数据。</p>
               </div>
+            </article>
+          </section>
+
+          <section class="view" id="qianchuanView">
+            <div class="section-toolbar qianchuan-heading">
+              <div>
+                <p class="section-kicker">客户账号接入</p>
+                <h2>巨量千川授权</h2>
+                <p>为每位客户生成独立授权链接。客户只在巨量千川官方页面登录并选择账户，无需提供账号密码。</p>
+              </div>
+              <span class="qianchuan-service-badge" id="qianchuanServiceBadge" data-state="ready">安全回调</span>
+            </div>
+
+            <div class="qianchuan-grid">
+              <article class="panel qianchuan-connect-card">
+                <div class="qianchuan-card-icon" aria-hidden="true">↗</div>
+                <div>
+                  <p class="section-kicker">创建授权链接</p>
+                  <h3>添加客户千川账号</h3>
+                  <p class="qianchuan-card-copy">客户编号用于区分授权来源，仅支持字母、数字、短横线和下划线，不要填写手机号等敏感信息。</p>
+                </div>
+                <form class="qianchuan-form" id="qianchuanAuthorizeForm">
+                  <label class="form-field">
+                    <span>客户编号 *</span>
+                    <input id="qianchuanCustomerKey" required maxlength="64" pattern="[A-Za-z0-9_-]+" autocomplete="off" placeholder="例如：customer-001" />
+                  </label>
+                  <button class="button button-primary" type="submit">生成授权链接</button>
+                </form>
+                <div class="qianchuan-link-panel hidden" id="qianchuanLinkPanel">
+                  <label class="form-field">
+                    <span>发送给客户的链接</span>
+                    <input id="qianchuanAuthorizationLink" readonly />
+                  </label>
+                  <div class="qianchuan-link-actions">
+                    <button class="button button-secondary" id="copyQianchuanLinkButton" type="button">复制链接</button>
+                    <a class="button button-ghost" id="openQianchuanLinkButton" target="_blank" rel="noopener noreferrer">打开测试</a>
+                  </div>
+                </div>
+              </article>
+
+              <article class="panel qianchuan-steps-card">
+                <p class="section-kicker">客户操作</p>
+                <h3>三步完成授权</h3>
+                <ol class="qianchuan-steps">
+                  <li><span>1</span><div><strong>打开链接</strong><p>客户进入巨量千川官方授权页并登录自己的管理账号。</p></div></li>
+                  <li><span>2</span><div><strong>选择账户</strong><p>可授权部分账户，也可授权当前及后续新增的全部账户。</p></div></li>
+                  <li><span>3</span><div><strong>确认授权</strong><p>授权码由云端立即处理，网页只显示成功或失败结果。</p></div></li>
+                </ol>
+              </article>
+            </div>
+
+            <article class="panel qianchuan-result-card hidden" id="qianchuanResultCard" aria-live="polite">
+              <div class="qianchuan-result-icon" id="qianchuanResultIcon">✓</div>
+              <div>
+                <p class="section-kicker">授权结果</p>
+                <h3 id="qianchuanResultTitle">授权成功</h3>
+                <p id="qianchuanResultMessage"></p>
+              </div>
+            </article>
+
+            <article class="panel qianchuan-security-card">
+              <div>
+                <p class="section-kicker">安全说明</p>
+                <h3>密钥与 Token 不进入网页</h3>
+              </div>
+              <p>App Secret、Access Token 和 Refresh Token 仅保存在 Supabase 云端私有表中；GitHub Pages 只负责生成客户授权入口和展示结果。</p>
             </article>
           </section>
 
@@ -506,6 +576,6 @@
     </div>
 
     <div class="toast-region" id="toastRegion" aria-live="polite"></div>
-    <script src="app.js?v=1.5.0"></script>
+    <script src="app.js?v=1.6.0"></script>
   </body>
 </html>
