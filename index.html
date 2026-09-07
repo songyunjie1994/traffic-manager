@@ -9,7 +9,7 @@
       content="以云端数据为主，支持充值登记、消耗录入与投流报表的管理系统。"
     />
     <title>投流管理系统</title>
-    <link rel="stylesheet" href="styles.css?v=1.7.0" />
+    <link rel="stylesheet" href="styles.css?v=1.7.2" />
   </head>
   <body>
     <div class="app-shell">
@@ -609,7 +609,6 @@
           <div class="payment-ocr-status-row"><span id="paymentOcrMessage">正在识别…</span><strong id="paymentOcrPercent">0%</strong></div>
           <div class="payment-ocr-progress"><span id="paymentOcrProgress"></span></div>
         </div>
-        <label class="form-field span-3"><span>智谱 API Key（<a href="https://open.bigmodel.cn" target="_blank" rel="noopener">open.bigmodel.cn</a> 免费申请，仅保存在本机浏览器）</span><input id="zhipuApiKey" type="password" autocomplete="off" placeholder="粘贴 API Key，用 GLM-4V 识别付款截图" /></label>
         <div class="form-grid payment-form-grid">
           <label class="form-field"><span>付款日期 *</span><input id="paymentDate" type="date" required /></label>
           <label class="form-field"><span>付款金额（元）*</span><input id="paymentAmount" type="number" min="0.01" step="0.01" inputmode="decimal" required placeholder="识别后可修改金额" /></label>
@@ -620,7 +619,7 @@
           <label class="form-field"><span>收款方银行</span><input id="paymentPayeeBank" maxlength="60" placeholder="开户行 / 支付渠道，选填" /></label>
           <label class="form-field"><span>收款方账号</span><input id="paymentPayeeAccount" maxlength="40" placeholder="卡号 / 支付账号，选填" /></label>
         </div>
-        <p class="payment-privacy">付款截图由智谱 GLM-4V 大模型识别（默认已绑定 API Key，也可在上方填写自己的 Key）；确认保存后同步日期、金额与双方付款信息。</p>
+        <p class="payment-privacy">付款截图会临时发送至 Supabase 云函数并由智谱视觉模型识别；图片不写入业务数据库，确认保存后仅同步日期、金额与双方付款信息。</p>
         <div class="modal-actions"><button type="button" class="button button-ghost" data-close-modal="paymentModal">取消</button><button type="submit" class="button button-primary">保存付款记录</button></div>
       </form>
     </div>
@@ -638,6 +637,6 @@
     </div>
 
     <div class="toast-region" id="toastRegion" aria-live="polite"></div>
-    <script src="app.js?v=1.7.0"></script>
+    <script src="app.js?v=1.7.2"></script>
   </body>
 </html>

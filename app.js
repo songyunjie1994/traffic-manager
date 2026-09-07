@@ -1,7 +1,7 @@
 "use strict";
 
 const STORAGE_KEY = "traffic_manager_data_v1";
-const APP_VERSION = "1.7.0";
+const APP_VERSION = "1.7.2";
 const CLOUD_ROW_ID = 2;
 const RECHARGE_WORKFLOW_VERSION = "2026-08-29-v1";
 const REQUIRED_ACCOUNT_NAMES = ["杭州夕雾", "MELBOURNE", "江西井意", "浏阳市关口韵帆", "ISAMORVAN", "研汁工社"];
@@ -10,16 +10,12 @@ const RECHARGE_LEDGER_META = Object.freeze({
   payment: { title: "付款记录", dateLabel: "付款日期", accountLabel: "付款方", amountLabel: "付款金额", addLabel: "＋ 上传付款截图" },
   pending: { title: "待付款", dateLabel: "登记日期", accountLabel: "待付款账户", amountLabel: "待付金额", addLabel: "" },
 });
-const ZHIPU_VISION_CONFIG = Object.freeze({
-  endpoint: "https://open.bigmodel.cn/api/paas/v4/chat/completions",
-  model: "glm-4v-flash",
-  keyStorageKey: "traffic_manager_zhipu_api_key",
-  defaultApiKey: "2850c4bd97444eaf832119a49e23f54a.OojmSYrwr05W6qKm",
-});
-const VISION_PROMPT = "这是付款或转账截图。请识别并只输出一个 JSON 对象，不要输出任何其他文字：{\"date\":\"YYYY-MM-DD\",\"amount\":数字,\"payer\":\"付款方名称\",\"payerBank\":\"付款方银行\",\"payerAccount\":\"付款方账号\",\"payee\":\"收款方名称\",\"payeeBank\":\"收款方银行\",\"payeeAccount\":\"收款方账号\"}。date 填截图中的交易日期（没有则填空字符串）；amount 填付款金额的纯数字，不含单位和千分位逗号；payer/payee 填付款方、收款方的户名或名称；银行填开户行或支付渠道名称（如：工商银行、支付宝、微信支付）；账号填银行卡号或支付账号；识别不到的字段一律填空字符串。";
 const CLOUD_CONFIG = Object.freeze({
   url: "https://mabxdkjqilulkrmqrrgo.supabase.co",
   publishableKey: "sb_publishable_lfHpd1y1gCaQIDXfRkD_8w_O1bPMWGx",
+});
+const PAYMENT_AI_CONFIG = Object.freeze({
+  url: `${CLOUD_CONFIG.url}/functions/v1/payment-recognize`,
 });
 const QIANCHUAN_CONFIG = Object.freeze({
   startUrl: `${CLOUD_CONFIG.url}/functions/v1/qianchuan-oauth-start`,
@@ -733,9 +729,15 @@ async function loadQianchuanDashboard() {
     const data = await qianchuanRequest({ action: "dashboard", customerKey, startDate, endDate });
     renderQianchuanDashboard(data);
     const failedCount = Number(data?.summary?.failedAccountCount || 0);
+    const accountCount = Number(data?.summary?.accountCount || 0);
+    const noAccounts = data?.warnings?.noDiscoveredAccounts === true || accountCount === 0;
     setQianchuanDashboardStatus(
-      failedCount ? `数据已更新，其中 ${failedCount} 个账户读取失败。` : "千川数据已更新。",
-      failedCount ? "error" : "success",
+      noAccounts
+        ? "已读取客户授权，但没有展开出千川账户。请检查授权范围或管理账号下是否有千川账户。"
+        : failedCount
+          ? `数据已更新，其中 ${failedCount} 个账户读取失败。`
+          : `千川数据已更新，共 ${accountCount} 个账户。`,
+      noAccounts || failedCount ? "error" : "success",
     );
   } catch (error) {
     const message = qianchuanErrorMessage(error.message);
@@ -1028,19 +1030,6 @@ function setPaymentOcrStatus(message, progress = 0, stateName = "working") {
   $("#paymentOcrProgress").style.width = `${percent}%`;
 }
 
-function getZhipuApiKey() {
-  const saved = String(localStorage.getItem(ZHIPU_VISION_CONFIG.keyStorageKey) || "").trim();
-  return saved || ZHIPU_VISION_CONFIG.defaultApiKey;
-}
-
-function saveZhipuApiKey(value) {
-  try {
-    localStorage.setItem(ZHIPU_VISION_CONFIG.keyStorageKey, String(value || "").trim());
-  } catch (error) {
-    console.warn("保存 API Key 失败", error);
-  }
-}
-
 function fileToDataUrl(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -1050,62 +1039,31 @@ function fileToDataUrl(file) {
   });
 }
 
-async function callZhipuVision(apiKey, dataUrl) {
-  const response = await fetch(ZHIPU_VISION_CONFIG.endpoint, {
+async function callPaymentRecognition(dataUrl) {
+  const response = await fetch(PAYMENT_AI_CONFIG.url, {
     method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
-    body: JSON.stringify({
-      model: ZHIPU_VISION_CONFIG.model,
-      temperature: 0.1,
-      messages: [{
-        role: "user",
-        content: [
-          { type: "image_url", image_url: { url: dataUrl } },
-          { type: "text", text: VISION_PROMPT },
-        ],
-      }],
-    }),
+    headers: {
+      "Content-Type": "application/json",
+      apikey: CLOUD_CONFIG.publishableKey,
+    },
+    body: JSON.stringify({ imageDataUrl: dataUrl }),
   });
+  const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
-    const detail = await response.text().catch(() => "");
-    if (response.status === 401) throw new Error("API Key 无效，请检查后重新填写");
-    if (response.status === 429) throw new Error("调用过于频繁，请稍后再试");
-    throw new Error(`接口错误 ${response.status} ${detail.slice(0, 100)}`);
+    const errorMessages = {
+      AI_NOT_CONFIGURED: "云端 AI Key 尚未配置",
+      AI_AUTH_FAILED: "云端 AI Key 无效，请更换新 Key",
+      AI_RATE_LIMITED: "AI 调用过于频繁，请稍后再试",
+      RATE_LIMITED: "上传过于频繁，请稍后再试",
+      INVALID_IMAGE: "图片格式无效，请重新选择",
+      IMAGE_TOO_LARGE: "图片不能超过 8MB",
+      AI_OUTPUT_INVALID: "没有识别出完整付款信息，请换一张清晰截图",
+      ORIGIN_NOT_ALLOWED: "当前网址不允许调用图片识别",
+    };
+    throw new Error(errorMessages[payload?.error] || "云端识别暂时不可用，请稍后重试");
   }
-  const data = await response.json();
-  return String(data?.choices?.[0]?.message?.content || "");
-}
-
-function parseVisionAnswer(answer) {
-  const text = String(answer || "").replace(/```json|```/gi, "").trim();
-  const jsonText = text.match(/\{[\s\S]*\}/)?.[0] || "";
-  let date = "";
-  let amount = 0;
-  let payer = "";
-  let payerBank = "";
-  let payerAccount = "";
-  let payee = "";
-  let payeeBank = "";
-  let payeeAccount = "";
-  try {
-    const parsed = JSON.parse(jsonText || "{}");
-    date = String(parsed.date || "").trim();
-    amount = Number(String(parsed.amount ?? "").replace(/[^\d.]/g, "")) || 0;
-    payer = String(parsed.payer || "").trim();
-    payerBank = String(parsed.payerBank || "").trim();
-    payerAccount = String(parsed.payerAccount || "").trim();
-    payee = String(parsed.payee || "").trim();
-    payeeBank = String(parsed.payeeBank || "").trim();
-    payeeAccount = String(parsed.payeeAccount || "").trim();
-  } catch (error) {
-    const amountMatch = text.match(/([1-9][\d,]*(?:\.\d{1,2})?)/);
-    if (amountMatch) amount = Number(amountMatch[1].replaceAll(",", "")) || 0;
-  }
-  if (date && !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-    const m = date.match(/(20\d{2})[-/年.](\d{1,2})[-/月.](\d{1,2})/);
-    date = m ? `${m[1]}-${String(m[2]).padStart(2, "0")}-${String(m[3]).padStart(2, "0")}` : "";
-  }
-  return { date, amount, payer, payerBank, payerAccount, payee, payeeBank, payeeAccount, confidence: 100 };
+  if (!payload?.result || typeof payload.result !== "object") throw new Error("云端识别返回格式异常");
+  return payload.result;
 }
 
 async function recognizePaymentImage(file) {
@@ -1117,20 +1075,13 @@ async function recognizePaymentImage(file) {
     toast("图片不能超过 8MB", "error");
     return;
   }
-  const apiKey = getZhipuApiKey();
-  if (!apiKey) {
-    setPaymentOcrStatus("请先在下方填写智谱 API Key（bigmodel.cn 免费申请）", 1, "error");
-    $("#zhipuApiKey").focus();
-    return;
-  }
   $("#paymentImageName").textContent = file.name;
   $("#paymentUploadButton").disabled = true;
   setPaymentOcrStatus("正在上传截图…", 0.2);
   try {
     const dataUrl = await fileToDataUrl(file);
-    setPaymentOcrStatus("智谱 GLM-4V 正在识别付款信息…", 0.5);
-    const answer = await callZhipuVision(apiKey, dataUrl);
-    const parsed = parseVisionAnswer(answer);
+    setPaymentOcrStatus("云端 AI 正在识别付款信息…", 0.5);
+    const parsed = await callPaymentRecognition(dataUrl);
     paymentOcrResult = parsed;
     if (parsed.date) $("#paymentDate").value = parsed.date;
     if (parsed.amount) $("#paymentAmount").value = parsed.amount;
@@ -1356,7 +1307,6 @@ function openPaymentModal(payment = null) {
   $("#paymentPayee").value = payment?.payee || "";
   $("#paymentPayeeBank").value = payment?.payeeBank || "";
   $("#paymentPayeeAccount").value = payment?.payeeAccount || "";
-  $("#zhipuApiKey").value = getZhipuApiKey();
   showModal("paymentModal");
 }
 
@@ -1698,7 +1648,6 @@ function bindEvents() {
     event.target.setCustomValidity("");
   });
   $("#paymentUploadButton").addEventListener("click", () => $("#paymentImageInput").click());
-  $("#zhipuApiKey").addEventListener("input", (event) => saveZhipuApiKey(event.target.value));
   $("#paymentImageInput").addEventListener("change", (event) => {
     const [file] = event.target.files;
     if (file) recognizePaymentImage(file);

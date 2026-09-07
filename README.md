@@ -5,7 +5,7 @@
 ## 功能
 
 - 充值端：管理充值记录、付款记录和待付款记录
-- 付款识别：上传支付宝、微信或银行回单图片，本地 OCR 自动填写付款日期、账户和金额
+- 付款识别：上传支付宝、微信或银行回单图片，云端 AI 自动填写付款日期、账户和金额
 - 消耗端：录入消耗、展现、点击、线索、订单、成交金额和备注
 - 报表端：自动汇总充值、消耗、账户余额、成交与 ROI，并提供账户对账
 - 账户配置：平台、广告账户、日预算、目标 ROI、负责人和状态管理
@@ -14,13 +14,27 @@
 - 云端存储：确认保存后的结构化业务数据同步到 Supabase，浏览器保留缓存
 - 数据迁移：完整 JSON 备份/恢复，充值与消耗筛选结果 CSV 导出
 - 响应式界面：支持电脑和手机浏览器
-- 千川数据看板：切换已授权客户，自动展开工作台内的千川账户，并汇总消耗、7 日归因成交金额、ROI、订单与点击
+- 千川数据看板：切换已授权客户，自动展开工作台、EBP 或店铺下的千川账户，并汇总消耗、7 日归因成交金额、ROI、订单与点击
 
 ## 数据说明
 
-本项目是 GitHub Pages 静态应用，业务数据不会写入 GitHub。付款截图只在当前浏览器中通过 payment-manager 已发布的 Tesseract.js 资源识别，不上传云端；确认保存后仅同步日期、账户、金额等结构化字段。请定期进入“数据备份”页面下载 JSON 备份文件。
+本项目是 GitHub Pages 静态应用，业务数据不会写入 GitHub。付款截图会临时发送至 Supabase Edge Function，再转交智谱视觉模型识别；截图本身不写入业务数据库，确认保存后仅同步日期、账户、金额等结构化字段。请定期进入“数据备份”页面下载 JSON 备份文件。
 
 云端不可用时页面只显示本地缓存并禁止修改，避免本地数据覆盖云端。
+
+## 付款截图 AI 识别
+
+智谱 API Key 只保存在 Supabase Edge Function Secrets，不得写入 `app.js`、GitHub 仓库或浏览器缓存。需要配置：
+
+- `ZHIPU_API_KEY`（在智谱开放平台新建，旧 Key 如曾进入 Git 历史必须作废）
+- `PAYMENT_ALLOWED_ORIGINS=https://songyunjie1994.github.io`
+- `ZHIPU_VISION_MODEL=glm-4v-flash`
+
+部署函数：
+
+```powershell
+supabase functions deploy payment-recognize --project-ref mabxdkjqilulkrmqrrgo --use-api
+```
 
 ## 巨量千川客户授权
 

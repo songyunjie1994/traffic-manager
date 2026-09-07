@@ -8,3 +8,6 @@ verify_jwt = false
 
 [functions.qianchuan-data]
 verify_jwt = false
+
+[functions.payment-recognize]
+verify_jwt = false
