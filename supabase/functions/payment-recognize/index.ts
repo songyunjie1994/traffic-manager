@@ -1,5 +1,6 @@
 const ZHIPU_ENDPOINT = "https://open.bigmodel.cn/api/paas/v4/chat/completions";
 const DEFAULT_MODEL = "glm-4v-flash";
+const RECEIPT_BUCKET = "payment-receipts";
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 const MAX_REQUEST_BYTES = 12 * 1024 * 1024;
 const RATE_WINDOW_MS = 60_000;
@@ -26,6 +27,7 @@ type RecognitionResult = {
   payeeBank: string;
   payeeAccount: string;
   confidence: number;
+  imagePath?: string;
 };
 
 const rateBuckets = new Map<string, RateBucket>();
@@ -103,6 +105,80 @@ function cleanText(value: unknown, maxLength = 80) {
   return String(value || "").trim().slice(0, maxLength);
 }
 
+function storageConfig() {
+  const url = String(Deno.env.get("SUPABASE_URL") || "").replace(/\/$/, "");
+  const serviceKey = String(Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "");
+  if (!url || !serviceKey) throw new Error("STORAGE_NOT_CONFIGURED");
+  return { url, serviceKey };
+}
+
+function storageHeaders(contentType = "application/json") {
+  const { serviceKey } = storageConfig();
+  return {
+    Authorization: `Bearer ${serviceKey}`,
+    apikey: serviceKey,
+    "Content-Type": contentType,
+  };
+}
+
+function encodedStoragePath(path: string) {
+  return path.split("/").map((part) => encodeURIComponent(part)).join("/");
+}
+
+async function ensureReceiptBucket() {
+  const { url } = storageConfig();
+  const lookup = await fetch(`${url}/storage/v1/bucket/${RECEIPT_BUCKET}`, { headers: storageHeaders() });
+  if (lookup.ok) return;
+  const lookupText = cleanText(await lookup.text(), 160);
+  const bucketMissing = lookup.status === 404 || /NoSuchBucket|Bucket_not_found/i.test(lookupText);
+  if (!bucketMissing) {
+    const detail = lookupText.replace(/\s+/g, "_");
+    throw new Error(`STORAGE_BUCKET_LOOKUP_FAILED_${lookup.status}_${detail}`);
+  }
+  const created = await fetch(`${url}/storage/v1/bucket`, {
+    method: "POST",
+    headers: storageHeaders(),
+    body: JSON.stringify({
+      id: RECEIPT_BUCKET,
+      name: RECEIPT_BUCKET,
+      public: false,
+      file_size_limit: MAX_IMAGE_BYTES,
+      allowed_mime_types: [...ALLOWED_IMAGE_TYPES],
+    }),
+  });
+  if (!created.ok && created.status !== 409) {
+    const detail = cleanText(await created.text(), 160).replace(/\s+/g, "_");
+    throw new Error(`STORAGE_BUCKET_CREATE_FAILED_${created.status}_${detail}`);
+  }
+}
+
+async function storeReceiptImage(mimeType: string, base64: string) {
+  await ensureReceiptBucket();
+  const { url } = storageConfig();
+  const extension = mimeType === "image/png" ? "png" : mimeType === "image/webp" ? "webp" : "jpg";
+  const path = `payments/${new Date().toISOString().slice(0, 10)}/${crypto.randomUUID()}.${extension}`;
+  const bytes = Uint8Array.from(atob(base64.replace(/\s/g, "")), (character) => character.charCodeAt(0));
+  const response = await fetch(`${url}/storage/v1/object/${RECEIPT_BUCKET}/${encodedStoragePath(path)}`, {
+    method: "POST",
+    headers: { ...storageHeaders(mimeType), "x-upsert": "false", "cache-control": "3600" },
+    body: bytes,
+  });
+  if (!response.ok) {
+    const detail = cleanText(await response.text(), 160).replace(/\s+/g, "_");
+    throw new Error(`STORAGE_UPLOAD_FAILED_${response.status}_${detail}`);
+  }
+  return path;
+}
+
+async function readReceiptImage(path: string) {
+  if (!/^payments\/\d{4}-\d{2}-\d{2}\/[0-9a-f-]+\.(?:jpg|png|webp)$/.test(path)) return null;
+  const { url } = storageConfig();
+  const response = await fetch(`${url}/storage/v1/object/${RECEIPT_BUCKET}/${encodedStoragePath(path)}`, {
+    headers: storageHeaders(),
+  });
+  return response.ok ? response : null;
+}
+
 function parseRecognition(answer: string): RecognitionResult | null {
   const text = answer.replace(/```json|```/gi, "").trim();
   const jsonText = text.match(/\{[\s\S]*\}/)?.[0];
@@ -153,11 +229,30 @@ Deno.serve(async (request) => {
   const contentLength = Number(request.headers.get("content-length") || 0);
   if (contentLength > MAX_REQUEST_BYTES) return json(origin, 413, { error: "IMAGE_TOO_LARGE" });
 
-  let body: { imageDataUrl?: unknown };
+  let body: { action?: unknown; imageDataUrl?: unknown; imagePath?: unknown };
   try {
     body = await request.json();
   } catch {
     return json(origin, 400, { error: "INVALID_REQUEST" });
+  }
+
+  if (body.action === "get-image") {
+    try {
+      const storedImage = await readReceiptImage(cleanText(body.imagePath, 240));
+      if (!storedImage) return json(origin, 404, { error: "IMAGE_NOT_FOUND" });
+      return new Response(storedImage.body, {
+        status: 200,
+        headers: {
+          ...corsHeaders(origin),
+          "Content-Type": storedImage.headers.get("content-type") || "application/octet-stream",
+          "Cache-Control": "private, max-age=300",
+          "Content-Disposition": "inline",
+        },
+      });
+    } catch (error) {
+      console.error("Payment receipt read failed", error instanceof Error ? error.message : "UnknownError");
+      return json(origin, 502, { error: "IMAGE_READ_FAILED" });
+    }
   }
 
   const imageDataUrl = String(body?.imageDataUrl || "");
@@ -210,6 +305,13 @@ Deno.serve(async (request) => {
     const answer = String(providerData?.choices?.[0]?.message?.content || "");
     const result = parseRecognition(answer);
     if (!result) return json(origin, 422, { error: "AI_OUTPUT_INVALID" });
+    try {
+      result.imagePath = await storeReceiptImage(imageMatch[1], imageMatch[2]);
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : "UnknownError";
+      console.error("Payment receipt upload failed", detail);
+      return json(origin, 502, { error: "IMAGE_STORAGE_FAILED" });
+    }
     return json(origin, 200, { result, model, recognitionVersion: "cny-v2" });
   } catch (error) {
     console.error("Payment AI function failed", error instanceof Error ? error.name : "UnknownError");

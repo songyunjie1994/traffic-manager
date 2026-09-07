@@ -1,7 +1,7 @@
 "use strict";
 
 const STORAGE_KEY = "traffic_manager_data_v1";
-const APP_VERSION = "1.7.4";
+const APP_VERSION = "1.7.5";
 const CLOUD_ROW_ID = 2;
 const RECHARGE_WORKFLOW_VERSION = "2026-08-29-v1";
 const REQUIRED_ACCOUNT_NAMES = ["杭州夕雾", "MELBOURNE", "江西井意", "浏阳市关口韵帆", "ISAMORVAN", "研汁工社"];
@@ -33,6 +33,7 @@ let lastCloudSnapshot = "";
 let lastCloudRefreshAt = 0;
 let activeRechargeLedger = "recharge";
 let paymentOcrResult = null;
+let receiptImageObjectUrl = "";
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
@@ -766,6 +767,7 @@ async function callPaymentRecognition(dataUrl) {
       RATE_LIMITED: "上传过于频繁，请稍后再试",
       INVALID_IMAGE: "图片格式无效，请重新选择",
       IMAGE_TOO_LARGE: "图片不能超过 8MB",
+      IMAGE_STORAGE_FAILED: "凭证图片保存失败，请稍后重试",
       AI_OUTPUT_INVALID: "没有识别出完整付款信息，请换一张清晰截图",
       ORIGIN_NOT_ALLOWED: "当前网址不允许调用图片识别",
     };
@@ -773,6 +775,28 @@ async function callPaymentRecognition(dataUrl) {
   }
   if (!payload?.result || typeof payload.result !== "object") throw new Error("云端识别返回格式异常");
   return payload.result;
+}
+
+async function showPaymentReceiptImage(imagePath) {
+  if (!imagePath) return;
+  try {
+    const response = await fetch(PAYMENT_AI_CONFIG.url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        apikey: CLOUD_CONFIG.publishableKey,
+      },
+      body: JSON.stringify({ action: "get-image", imagePath }),
+    });
+    if (!response.ok) throw new Error("凭证图片读取失败");
+    const blob = await response.blob();
+    if (receiptImageObjectUrl) URL.revokeObjectURL(receiptImageObjectUrl);
+    receiptImageObjectUrl = URL.createObjectURL(blob);
+    $("#receiptImage").src = receiptImageObjectUrl;
+    showModal("receiptImageModal");
+  } catch (error) {
+    toast(error.message || "凭证图片读取失败", "error");
+  }
 }
 
 async function recognizePaymentImage(file) {
@@ -830,7 +854,10 @@ function renderRecharges() {
   $("#addRechargeButton").textContent = meta.addLabel;
   $("#rechargeTableBody").innerHTML = rows.map((recharge) => {
     const campaign = campaignById(recharge.campaignId);
-    const actions = activeRechargeLedger !== "pending" ? `<div class="table-actions"><button class="small-action" data-action="edit-ledger" data-id="${escapeHtml(recharge.id)}">编辑</button><button class="small-action delete" data-action="delete-ledger" data-id="${escapeHtml(recharge.id)}">删除</button></div>` : "—";
+    const receiptAction = activeRechargeLedger === "payment" && recharge.imagePath
+      ? `<button class="small-action receipt-action" data-action="view-payment-image" data-id="${escapeHtml(recharge.id)}">凭证</button>`
+      : "";
+    const actions = activeRechargeLedger !== "pending" ? `<div class="table-actions">${receiptAction}<button class="small-action" data-action="edit-ledger" data-id="${escapeHtml(recharge.id)}">编辑</button><button class="small-action delete" data-action="delete-ledger" data-id="${escapeHtml(recharge.id)}">删除</button></div>` : "—";
     if (activeRechargeLedger === "payment") {
       return `<tr>
         <td>${formatDate(recharge.date)}</td>
@@ -1005,7 +1032,7 @@ function openPaymentModal(payment = null) {
   $("#paymentId").value = payment?.id || "";
   $("#paymentModalTitle").textContent = payment ? "编辑付款记录" : "上传付款截图";
   $("#paymentUploadTitle").textContent = payment ? "重新上传截图识别" : "选择付款截图";
-  $("#paymentImageName").textContent = "支持支付宝、微信和银行回单图片";
+  $("#paymentImageName").textContent = payment?.imagePath ? "已附凭证图片，重新上传可替换" : "支持支付宝、微信和银行回单图片";
   $("#paymentOcrStatus").classList.add("hidden");
   $("#paymentOcrProgress").style.width = "0%";
   $("#paymentDate").value = payment?.date || localDate();
@@ -1049,6 +1076,11 @@ function showModal(id) {
 
 function closeModal(id) {
   $(`#${id}`).classList.add("hidden");
+  if (id === "receiptImageModal" && receiptImageObjectUrl) {
+    URL.revokeObjectURL(receiptImageObjectUrl);
+    receiptImageObjectUrl = "";
+    $("#receiptImage").removeAttribute("src");
+  }
   if (!$$(".modal-backdrop:not(.hidden), .confirm-backdrop:not(.hidden)").length) document.body.style.overflow = "";
 }
 
@@ -1121,6 +1153,7 @@ async function handlePaymentSubmit(event) {
   const id = $("#paymentId").value;
   const existing = state.recharges.find((item) => item.id === id);
   const item = {
+    ...(existing || {}),
     id: id || uid("pay"),
     date: $("#paymentDate").value,
     amount: Number($("#paymentAmount").value),
@@ -1132,6 +1165,8 @@ async function handlePaymentSubmit(event) {
     payeeAccount: $("#paymentPayeeAccount").value.trim(),
     recordType: "payment",
     status: "已付款",
+    amountCurrency: "CNY",
+    imagePath: paymentOcrResult?.imagePath || existing?.imagePath || "",
     source: paymentOcrResult ? "glm-4v" : (existing?.source || "manual"),
     ocrConfidence: paymentOcrResult?.confidence || existing?.ocrConfidence || 0,
     createdAt: existing?.createdAt || new Date().toISOString(),
@@ -1372,6 +1407,7 @@ function bindEvents() {
     if (!button) return;
     const recharge = state.recharges.find((item) => item.id === button.dataset.id);
     if (button.dataset.action === "edit-ledger") recharge?.recordType === "payment" ? openPaymentModal(recharge) : openRechargeModal(recharge);
+    if (button.dataset.action === "view-payment-image") showPaymentReceiptImage(recharge?.imagePath);
     if (button.dataset.action === "delete-ledger") deleteRecharge(button.dataset.id);
   });
 

@@ -3409,3 +3409,40 @@ tbody tr:hover td {
     grid-template-columns: 1fr;
   }
 }
+
+.receipt-action {
+  color: #4338ca;
+  background: #eef2ff;
+}
+
+.receipt-image-modal {
+  width: min(900px, calc(100vw - 32px));
+  max-width: 900px;
+}
+
+.receipt-image-frame {
+  display: grid;
+  max-height: calc(100dvh - 180px);
+  overflow: auto;
+  background: #f8fafc;
+  border: 1px solid var(--reference-border);
+  border-radius: 12px;
+  place-items: center;
+}
+
+.receipt-image-frame img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  object-fit: contain;
+}
+
+@media (max-width: 720px) {
+  .receipt-image-modal {
+    width: 100%;
+  }
+
+  .receipt-image-frame {
+    max-height: calc(88dvh - 90px);
+  }
+}

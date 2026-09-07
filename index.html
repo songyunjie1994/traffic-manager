@@ -9,7 +9,7 @@
       content="以云端数据为主，支持充值登记、消耗录入与投流报表的管理系统。"
     />
     <title>投流管理系统</title>
-    <link rel="stylesheet" href="styles.css?v=1.7.4" />
+    <link rel="stylesheet" href="styles.css?v=1.7.5" />
   </head>
   <body>
     <div class="app-shell">
@@ -487,7 +487,7 @@
           <label class="form-field"><span>收款方银行</span><input id="paymentPayeeBank" maxlength="60" placeholder="开户行 / 支付渠道，选填" /></label>
           <label class="form-field"><span>收款方账号</span><input id="paymentPayeeAccount" maxlength="40" placeholder="卡号 / 支付账号，选填" /></label>
         </div>
-        <p class="payment-privacy">付款截图会临时发送至 Supabase 云函数并由智谱视觉模型识别；图片不写入业务数据库，确认保存后仅同步日期、金额与双方付款信息。</p>
+        <p class="payment-privacy">付款截图由智谱视觉模型识别并保存至 Supabase 私有凭证空间；付款记录只保存图片路径，可在列表中点击“凭证”查看。</p>
         <div class="modal-actions"><button type="button" class="button button-ghost" data-close-modal="paymentModal">取消</button><button type="submit" class="button button-primary">保存付款记录</button></div>
       </form>
     </div>
@@ -504,7 +504,17 @@
       </div>
     </div>
 
+    <div class="modal-backdrop hidden" id="receiptImageModal" role="dialog" aria-modal="true" aria-labelledby="receiptImageTitle">
+      <div class="modal receipt-image-modal">
+        <div class="modal-header">
+          <div><p class="section-kicker">付款记录</p><h2 id="receiptImageTitle">付款凭证</h2></div>
+          <button type="button" class="icon-button modal-close" data-close-modal="receiptImageModal" aria-label="关闭">×</button>
+        </div>
+        <div class="receipt-image-frame"><img id="receiptImage" alt="付款凭证图片" /></div>
+      </div>
+    </div>
+
     <div class="toast-region" id="toastRegion" aria-live="polite"></div>
-    <script src="app.js?v=1.7.4"></script>
+    <script src="app.js?v=1.7.5"></script>
   </body>
 </html>
