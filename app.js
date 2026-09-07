@@ -1,7 +1,7 @@
 "use strict";
 
 const STORAGE_KEY = "traffic_manager_data_v1";
-const APP_VERSION = "1.7.5";
+const APP_VERSION = "1.7.6";
 const CLOUD_ROW_ID = 2;
 const RECHARGE_WORKFLOW_VERSION = "2026-08-29-v1";
 const REQUIRED_ACCOUNT_NAMES = ["杭州夕雾", "MELBOURNE", "江西井意", "浏阳市关口韵帆", "ISAMORVAN", "研汁工社"];
@@ -854,8 +854,10 @@ function renderRecharges() {
   $("#addRechargeButton").textContent = meta.addLabel;
   $("#rechargeTableBody").innerHTML = rows.map((recharge) => {
     const campaign = campaignById(recharge.campaignId);
-    const receiptAction = activeRechargeLedger === "payment" && recharge.imagePath
-      ? `<button class="small-action receipt-action" data-action="view-payment-image" data-id="${escapeHtml(recharge.id)}">凭证</button>`
+    const receiptAction = activeRechargeLedger === "payment"
+      ? recharge.imagePath
+        ? `<button class="small-action receipt-action" data-action="view-payment-image" data-id="${escapeHtml(recharge.id)}">凭证</button>`
+        : `<button class="small-action receipt-action" data-action="attach-payment-image" data-id="${escapeHtml(recharge.id)}">补图片</button>`
       : "";
     const actions = activeRechargeLedger !== "pending" ? `<div class="table-actions">${receiptAction}<button class="small-action" data-action="edit-ledger" data-id="${escapeHtml(recharge.id)}">编辑</button><button class="small-action delete" data-action="delete-ledger" data-id="${escapeHtml(recharge.id)}">删除</button></div>` : "—";
     if (activeRechargeLedger === "payment") {
@@ -1407,6 +1409,10 @@ function bindEvents() {
     if (!button) return;
     const recharge = state.recharges.find((item) => item.id === button.dataset.id);
     if (button.dataset.action === "edit-ledger") recharge?.recordType === "payment" ? openPaymentModal(recharge) : openRechargeModal(recharge);
+    if (button.dataset.action === "attach-payment-image" && recharge) {
+      openPaymentModal(recharge);
+      setTimeout(() => $("#paymentUploadButton").focus(), 60);
+    }
     if (button.dataset.action === "view-payment-image") showPaymentReceiptImage(recharge?.imagePath);
     if (button.dataset.action === "delete-ledger") deleteRecharge(button.dataset.id);
   });
