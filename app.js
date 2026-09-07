@@ -1,7 +1,7 @@
 "use strict";
 
 const STORAGE_KEY = "traffic_manager_data_v1";
-const APP_VERSION = "1.7.3";
+const APP_VERSION = "1.7.4";
 const CLOUD_ROW_ID = 2;
 const RECHARGE_WORKFLOW_VERSION = "2026-08-29-v1";
 const REQUIRED_ACCOUNT_NAMES = ["杭州夕雾", "MELBOURNE", "江西井意", "浏阳市关口韵帆", "ISAMORVAN", "研汁工社"];
@@ -801,7 +801,7 @@ async function recognizePaymentImage(file) {
     $("#paymentPayeeBank").value = parsed.payeeBank;
     $("#paymentPayeeAccount").value = parsed.payeeAccount;
     const missing = [!parsed.amount && "金额", !parsed.payer && "付款方", !parsed.payee && "收款方"].filter(Boolean);
-    setPaymentOcrStatus(missing.length ? `识别完成，请补充${missing.join("、")}` : "识别完成，请确认后保存", 1, "success");
+    setPaymentOcrStatus(missing.length ? `识别完成，请补充${missing.join("、")}` : "已按人民币金额识别，请确认后保存", 1, "success");
   } catch (error) {
     console.error(error);
     setPaymentOcrStatus(`识别失败：${error.message || "请重试或手动填写"}`, 1, "error");

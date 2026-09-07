@@ -10,12 +10,15 @@ const DEFAULT_ALLOWED_ORIGINS = [
   "http://127.0.0.1:4173",
   "http://localhost:4173",
 ];
-const VISION_PROMPT = "这是付款或转账截图。请识别并只输出一个 JSON 对象，不要输出其他文字：{\"date\":\"YYYY-MM-DD\",\"amount\":数字,\"payer\":\"付款方名称\",\"payerBank\":\"付款方银行\",\"payerAccount\":\"付款方账号\",\"payee\":\"收款方名称\",\"payeeBank\":\"收款方银行\",\"payeeAccount\":\"收款方账号\"}。date 填交易日期，没有则为空字符串；amount 是纯数字；payer/payee 填户名或名称；银行填开户行或支付渠道；账号填银行卡号或支付账号；识别不到的字段一律为空字符串。";
+const VISION_PROMPT = `这是付款或转账截图。请识别并只输出一个 JSON 对象，不要输出其他文字：
+{"date":"YYYY-MM-DD","amount":数字,"currency":"CNY","payer":"付款方名称","payerBank":"付款方银行","payerAccount":"付款方账号","payee":"收款方名称","payeeBank":"收款方银行","payeeAccount":"收款方账号"}。
+金额规则非常重要：amount 必须是收款方实际收到或“付给收款方”的人民币金额。CNY、CNH、RMB、人民币、¥ 均按人民币处理。如果截图同时出现外币扣款金额和人民币到账金额，必须选择人民币到账金额，不得选择 USD 等外币扣款金额或手续费。例如“您支付 14,959.15 USD，付给收款方 100,000.00 CNH”，amount 必须填 100000，currency 填 CNY。如果没有直接显示人民币金额，但同时显示外币金额和兑换汇率，则按截图中的汇率计算人民币金额；无法可靠得到人民币金额时 amount 填 0。date 填交易日期，没有则为空字符串；payer/payee 填户名或名称；银行填开户行或支付渠道；账号填银行卡号或支付账号；识别不到的文字字段一律为空字符串。`;
 
 type RateBucket = { startedAt: number; count: number };
 type RecognitionResult = {
   date: string;
   amount: number;
+  currency: "CNY";
   payer: string;
   payerBank: string;
   payerAccount: string;
@@ -107,9 +110,12 @@ function parseRecognition(answer: string): RecognitionResult | null {
   try {
     const parsed = JSON.parse(jsonText);
     const amount = Number(String(parsed.amount ?? "").replace(/[^\d.]/g, "")) || 0;
+    const currency = cleanText(parsed.currency, 8).toUpperCase();
+    const isRenminbi = ["CNY", "CNH", "RMB", "人民币", "¥", "￥"].includes(currency);
     const result: RecognitionResult = {
       date: normalizeDate(parsed.date),
-      amount: Number.isFinite(amount) && amount > 0 ? amount : 0,
+      amount: isRenminbi && Number.isFinite(amount) && amount > 0 ? amount : 0,
+      currency: "CNY",
       payer: cleanText(parsed.payer),
       payerBank: cleanText(parsed.payerBank),
       payerAccount: cleanText(parsed.payerAccount, 48),
