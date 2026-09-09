@@ -1,7 +1,7 @@
 "use strict";
 
 const STORAGE_KEY = "traffic_manager_data_v1";
-const APP_VERSION = "1.7.6";
+const APP_VERSION = "1.7.7";
 const CLOUD_ROW_ID = 2;
 const RECHARGE_WORKFLOW_VERSION = "2026-08-29-v1";
 const REQUIRED_ACCOUNT_NAMES = ["杭州夕雾", "MELBOURNE", "江西井意", "浏阳市关口韵帆", "ISAMORVAN", "研汁工社"];
@@ -931,10 +931,14 @@ function filteredRecords() {
 function renderRecords() {
   const rows = filteredRecords();
   const spend = sum(rows, "spend");
+  const chengfangSpend = rows.reduce((total, record) => total + Number(record.spendBreakdown?.chengfang || 0), 0);
+  const globalSpend = rows.reduce((total, record) => total + Number(record.spendBreakdown?.global || 0), 0);
   const revenue = sum(rows, "revenue");
   const orders = sum(rows, "orders");
   const summary = [
-    ["筛选范围消耗", money(spend)],
+    ["乘方消耗", money(chengfangSpend)],
+    ["全域消耗", money(globalSpend)],
+    ["合计消耗", money(spend)],
     ["筛选范围成交", money(revenue)],
     ["订单数", number(orders)],
     ["整体 ROI", ratio(revenue, spend).toFixed(2)],
@@ -943,19 +947,20 @@ function renderRecords() {
 
   $("#recordTableBody").innerHTML = rows.map((record) => {
     const campaign = campaignById(record.campaignId);
+    const breakdown = record.spendBreakdown || {};
     const roi = ratio(record.revenue, record.spend);
-    const cpa = ratio(record.spend, record.orders);
     return `
       <tr>
         <td>${formatDate(record.date)}</td>
         <td>${campaign ? campaignNameCell(campaign, record.notes || campaign.account) : `<span>已删除的计划</span>`}</td>
-        <td class="number-cell">${money(record.spend, 2)}</td>
-        <td class="number-cell">${number(record.impressions)}</td>
-        <td class="number-cell">${number(record.clicks)}</td>
+        <td class="number-cell">${breakdown.chengfangLive == null ? "—" : money(breakdown.chengfangLive, 2)}</td>
+        <td class="number-cell">${breakdown.chengfangProduct == null ? "—" : money(breakdown.chengfangProduct, 2)}</td>
+        <td class="number-cell">${breakdown.globalLive == null ? "—" : money(breakdown.globalLive, 2)}</td>
+        <td class="number-cell">${breakdown.globalProduct == null ? "—" : money(breakdown.globalProduct, 2)}</td>
+        <td class="number-cell"><strong>${money(record.spend, 2)}</strong></td>
         <td class="number-cell">${money(record.revenue, 2)}</td>
         <td class="number-cell">${number(record.orders)}</td>
         <td class="number-cell"><span class="roi-value ${campaign && roi >= campaign.targetRoi ? "roi-good" : "roi-warn"}">${roi.toFixed(2)}</span></td>
-        <td class="number-cell">${record.orders ? money(cpa, 2) : "—"}</td>
         <td class="action-cell">
           <div class="table-actions">
             <button class="small-action" data-action="edit-record" data-id="${escapeHtml(record.id)}">编辑</button>
@@ -1310,14 +1315,14 @@ function csvEscape(value) {
 
 function exportCsv() {
   const rows = filteredRecords();
-  const header = ["日期", "计划名称", "平台", "广告账户", "消耗", "展现", "点击", "线索", "订单", "成交金额", "ROI", "CPC", "CPA", "备注"];
+  const header = ["日期", "计划名称", "平台", "广告账户", "乘方直播", "乘方商品", "全域直播", "全域商品", "合计消耗", "订单", "成交金额", "ROI", "备注"];
   const dataRows = rows.map((record) => {
     const campaign = campaignById(record.campaignId) || {};
     return [
-      record.date, campaign.name || "已删除的计划", campaign.platform || "", campaign.account || "", record.spend,
-      record.impressions, record.clicks, record.leads, record.orders, record.revenue,
-      ratio(record.revenue, record.spend).toFixed(2), ratio(record.spend, record.clicks).toFixed(2),
-      ratio(record.spend, record.orders).toFixed(2), record.notes || "",
+      record.date, campaign.name || "已删除的计划", campaign.platform || "", campaign.account || "",
+      record.spendBreakdown?.chengfangLive ?? "", record.spendBreakdown?.chengfangProduct ?? "",
+      record.spendBreakdown?.globalLive ?? "", record.spendBreakdown?.globalProduct ?? "", record.spend,
+      record.orders, record.revenue, ratio(record.revenue, record.spend).toFixed(2), record.notes || "",
     ].map(csvEscape).join(",");
   });
   const csv = `\ufeff${header.join(",")}\n${dataRows.join("\n")}`;

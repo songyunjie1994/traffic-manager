@@ -9,7 +9,7 @@
       content="以云端数据为主，支持充值登记、消耗录入与投流报表的管理系统。"
     />
     <title>投流管理系统</title>
-    <link rel="stylesheet" href="styles.css?v=1.7.6" />
+    <link rel="stylesheet" href="styles.css?v=1.7.7" />
   </head>
   <body>
     <div class="app-shell">
@@ -196,7 +196,7 @@
               <div>
                 <p class="section-kicker">消耗登记</p>
                 <h2>消耗端</h2>
-                <p>记录各广告账户每日消耗、点击、订单与成交金额。</p>
+                <p>按账户和日期查看乘方直播、乘方商品、全域直播、全域商品及合计消耗。</p>
               </div>
               <div class="toolbar-actions">
                 <button class="button button-secondary" id="exportCsvButton">导出 CSV</button>
@@ -226,13 +226,14 @@
                     <tr>
                       <th>日期</th>
                       <th>计划</th>
-                      <th class="number-cell">消耗</th>
-                      <th class="number-cell">展现</th>
-                      <th class="number-cell">点击</th>
+                      <th class="number-cell">乘方直播</th>
+                      <th class="number-cell">乘方商品</th>
+                      <th class="number-cell">全域直播</th>
+                      <th class="number-cell">全域商品</th>
+                      <th class="number-cell">合计消耗</th>
                       <th class="number-cell">成交</th>
                       <th class="number-cell">订单</th>
                       <th class="number-cell">ROI</th>
-                      <th class="number-cell">CPA</th>
                       <th class="action-cell">操作</th>
                     </tr>
                   </thead>
@@ -515,6 +516,6 @@
     </div>
 
     <div class="toast-region" id="toastRegion" aria-live="polite"></div>
-    <script src="app.js?v=1.7.6"></script>
+    <script src="app.js?v=1.7.7"></script>
   </body>
 </html>
