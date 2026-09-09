@@ -1,7 +1,7 @@
 "use strict";
 
 const STORAGE_KEY = "traffic_manager_data_v1";
-const APP_VERSION = "1.7.7";
+const APP_VERSION = "1.7.8";
 const CLOUD_ROW_ID = 2;
 const RECHARGE_WORKFLOW_VERSION = "2026-08-29-v1";
 const REQUIRED_ACCOUNT_NAMES = ["杭州夕雾", "MELBOURNE", "江西井意", "浏阳市关口韵帆", "ISAMORVAN", "研汁工社"];
@@ -923,7 +923,7 @@ function filteredRecords() {
   const platform = $("#recordPlatformFilter").value;
   return state.records.filter((record) => {
     const campaign = campaignById(record.campaignId);
-    const haystack = [campaign?.name, campaign?.account, record.notes].join(" ").toLowerCase();
+    const haystack = [campaign?.name, campaign?.account, record.douyinName, record.douyinNumber, record.notes].join(" ").toLowerCase();
     return (!query || haystack.includes(query)) && (!start || record.date >= start) && (!end || record.date <= end) && (platform === "all" || campaign?.platform === platform);
   }).sort((a, b) => b.date.localeCompare(a.date) || String(b.createdAt).localeCompare(String(a.createdAt)));
 }
@@ -953,6 +953,8 @@ function renderRecords() {
       <tr>
         <td>${formatDate(record.date)}</td>
         <td>${campaign ? campaignNameCell(campaign, record.notes || campaign.account) : `<span>已删除的计划</span>`}</td>
+        <td>${escapeHtml(record.douyinName || "—")}</td>
+        <td class="account-id-cell">${escapeHtml(record.douyinNumber || "—")}</td>
         <td class="number-cell">${breakdown.chengfangLive == null ? "—" : money(breakdown.chengfangLive, 2)}</td>
         <td class="number-cell">${breakdown.chengfangProduct == null ? "—" : money(breakdown.chengfangProduct, 2)}</td>
         <td class="number-cell">${breakdown.globalLive == null ? "—" : money(breakdown.globalLive, 2)}</td>
@@ -1315,11 +1317,12 @@ function csvEscape(value) {
 
 function exportCsv() {
   const rows = filteredRecords();
-  const header = ["日期", "计划名称", "平台", "广告账户", "乘方直播", "乘方商品", "全域直播", "全域商品", "合计消耗", "订单", "成交金额", "ROI", "备注"];
+  const header = ["日期", "计划名称", "平台", "广告账户", "抖音名称", "抖音号", "乘方直播", "乘方商品", "全域直播", "全域商品", "合计消耗", "订单", "成交金额", "ROI", "备注"];
   const dataRows = rows.map((record) => {
     const campaign = campaignById(record.campaignId) || {};
     return [
       record.date, campaign.name || "已删除的计划", campaign.platform || "", campaign.account || "",
+      record.douyinName || "", record.douyinNumber || "",
       record.spendBreakdown?.chengfangLive ?? "", record.spendBreakdown?.chengfangProduct ?? "",
       record.spendBreakdown?.globalLive ?? "", record.spendBreakdown?.globalProduct ?? "", record.spend,
       record.orders, record.revenue, ratio(record.revenue, record.spend).toFixed(2), record.notes || "",
