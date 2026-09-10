@@ -9,7 +9,7 @@
       content="以云端数据为主，支持充值登记、消耗录入与投流报表的管理系统。"
     />
     <title>投流管理系统</title>
-    <link rel="stylesheet" href="styles.css?v=1.7.8" />
+    <link rel="stylesheet" href="styles.css?v=1.7.9" />
   </head>
   <body>
     <div class="app-shell">
@@ -206,8 +206,8 @@
 
             <div class="filter-bar records-filter">
               <label class="search-field">
-                <span aria-hidden="true">⌕</span>
-                <input type="search" id="recordSearch" placeholder="搜索计划名称或备注" />
+                <span>关键词</span>
+                <input type="search" id="recordSearch" aria-label="关键词搜索" placeholder="账户、抖音名称、抖音号或备注" />
               </label>
               <input type="date" id="recordStartDate" aria-label="开始日期" />
               <span class="range-separator">至</span>
@@ -518,6 +518,6 @@
     </div>
 
     <div class="toast-region" id="toastRegion" aria-live="polite"></div>
-    <script src="app.js?v=1.7.8"></script>
+    <script src="app.js?v=1.7.9"></script>
   </body>
 </html>
