@@ -2861,6 +2861,21 @@ tbody tr:hover td {
   }
 }
 
+@media (min-width: 721px) {
+  .content-wrap.records-wide {
+    width: min(calc(100% - 48px), 1760px);
+    max-width: none;
+  }
+
+  .content-wrap.records-wide #recordsView .record-summary {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+
+  .content-wrap.records-wide #recordsView .records-table {
+    min-width: 1500px;
+  }
+}
+
 @media (max-width: 720px) {
   .content-wrap {
     width: min(100%, 520px);
