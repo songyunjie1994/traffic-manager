@@ -1,7 +1,7 @@
 "use strict";
 
 const STORAGE_KEY = "traffic_manager_data_v1";
-const APP_VERSION = "1.7.9";
+const APP_VERSION = "1.8.0";
 const CLOUD_ROW_ID = 2;
 const RECHARGE_WORKFLOW_VERSION = "2026-08-29-v1";
 const REQUIRED_ACCOUNT_NAMES = ["杭州夕雾", "MELBOURNE", "江西井意", "浏阳市关口韵帆", "ISAMORVAN", "研汁工社"];
@@ -971,8 +971,53 @@ function renderRecords() {
         </td>
       </tr>`;
   }).join("");
+
+  $("#recordMobileList").innerHTML = rows.map((record) => {
+    const campaign = campaignById(record.campaignId);
+    const breakdown = record.spendBreakdown || {};
+    const roi = ratio(record.revenue, record.spend);
+    const spendItem = (label, value) => `
+      <div class="mobile-spend-item">
+        <span>${label}</span>
+        <strong>${value == null ? "—" : money(value, 2)}</strong>
+      </div>`;
+    return `
+      <article class="mobile-record-card">
+        <div class="mobile-record-head">
+          <div class="mobile-record-identity">
+            <span class="mobile-record-date">${formatDate(record.date)}</span>
+            <strong>${escapeHtml(record.douyinName || campaign?.name || "未命名账户")}</strong>
+            <small>抖音号 ${escapeHtml(record.douyinNumber || "—")}</small>
+          </div>
+          <div class="mobile-record-total">
+            <span>合计消耗</span>
+            <strong>${money(record.spend, 2)}</strong>
+          </div>
+        </div>
+        <div class="mobile-record-account">
+          <span>${escapeHtml(campaign?.name || "已删除的计划")}</span>
+          <small>${escapeHtml(campaign?.account || record.notes || "—")}</small>
+        </div>
+        <div class="mobile-spend-grid">
+          ${spendItem("乘方直播", breakdown.chengfangLive)}
+          ${spendItem("乘方商品", breakdown.chengfangProduct)}
+          ${spendItem("全域直播", breakdown.globalLive)}
+          ${spendItem("全域商品", breakdown.globalProduct)}
+        </div>
+        <div class="mobile-record-performance">
+          <div><span>成交</span><strong>${money(record.revenue, 2)}</strong></div>
+          <div><span>订单</span><strong>${number(record.orders)}</strong></div>
+          <div><span>ROI</span><strong class="roi-value ${campaign && roi >= campaign.targetRoi ? "roi-good" : "roi-warn"}">${roi.toFixed(2)}</strong></div>
+        </div>
+        <div class="mobile-record-actions">
+          <button class="small-action" data-action="edit-record" data-id="${escapeHtml(record.id)}">编辑</button>
+          <button class="small-action delete" data-action="delete-record" data-id="${escapeHtml(record.id)}">删除</button>
+        </div>
+      </article>`;
+  }).join("");
   $("#recordEmptyState").classList.toggle("hidden", rows.length > 0);
   $("#recordTableBody").closest(".table-scroll").classList.toggle("hidden", rows.length === 0);
+  $("#recordTableBody").closest(".table-panel").classList.toggle("hidden", rows.length === 0);
 }
 
 function renderBackup() {
@@ -1426,6 +1471,14 @@ function bindEvents() {
   });
 
   $("#recordTableBody").addEventListener("click", (event) => {
+    const button = event.target.closest("[data-action]");
+    if (!button) return;
+    const record = state.records.find((item) => item.id === button.dataset.id);
+    if (button.dataset.action === "edit-record") openRecordModal(record);
+    if (button.dataset.action === "delete-record") deleteRecord(button.dataset.id);
+  });
+
+  $("#recordMobileList").addEventListener("click", (event) => {
     const button = event.target.closest("[data-action]");
     if (!button) return;
     const record = state.records.find((item) => item.id === button.dataset.id);

@@ -3437,6 +3437,10 @@ tbody tr:hover td {
   object-fit: contain;
 }
 
+.record-mobile-list {
+  display: none;
+}
+
 @media (max-width: 720px) {
   .receipt-image-modal {
     width: 100%;
@@ -3444,5 +3448,171 @@ tbody tr:hover td {
 
   .receipt-image-frame {
     max-height: calc(88dvh - 90px);
+  }
+
+  #recordsView .records-filter {
+    position: sticky;
+    top: 8px;
+    z-index: 14;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 10px;
+    margin: 0 -2px 16px;
+    padding: 12px;
+    background: rgba(255, 255, 255, 0.96);
+    border: 1px solid var(--reference-border);
+    border-radius: 16px;
+    box-shadow: 0 10px 28px rgba(15, 23, 42, 0.1);
+    backdrop-filter: blur(14px);
+  }
+
+  #recordsView .records-filter .search-field,
+  #recordsView .records-filter select {
+    grid-column: 1 / -1;
+    width: 100%;
+  }
+
+  #recordsView .records-filter input[type="date"] {
+    width: 100%;
+    min-width: 0;
+  }
+
+  #recordsView .records-filter .range-separator {
+    display: none;
+  }
+
+  #recordsView .record-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  #recordsView .table-panel {
+    display: none;
+  }
+
+  #recordsView .record-mobile-list {
+    display: grid;
+    gap: 12px;
+  }
+
+  .mobile-record-card {
+    overflow: hidden;
+    background: #fff;
+    border: 1px solid var(--reference-border);
+    border-radius: 18px;
+    box-shadow: 0 8px 24px rgba(15, 23, 42, 0.06);
+  }
+
+  .mobile-record-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 16px;
+    background: linear-gradient(135deg, #f8fafc 0%, #eef2ff 100%);
+    border-bottom: 1px solid #e2e8f0;
+  }
+
+  .mobile-record-identity {
+    display: grid;
+    min-width: 0;
+    gap: 3px;
+  }
+
+  .mobile-record-date,
+  .mobile-record-total span,
+  .mobile-record-identity small,
+  .mobile-record-account small,
+  .mobile-spend-item span,
+  .mobile-record-performance span {
+    color: var(--muted);
+    font-size: 12px;
+  }
+
+  .mobile-record-identity strong {
+    overflow: hidden;
+    color: #0f172a;
+    font-size: 17px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .mobile-record-total {
+    display: grid;
+    flex: 0 0 auto;
+    gap: 3px;
+    text-align: right;
+  }
+
+  .mobile-record-total strong {
+    color: #dc2626;
+    font-size: 19px;
+  }
+
+  .mobile-record-account {
+    display: grid;
+    gap: 3px;
+    padding: 12px 16px 0;
+  }
+
+  .mobile-record-account span {
+    color: #334155;
+    font-size: 13px;
+    font-weight: 700;
+  }
+
+  .mobile-spend-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    padding: 12px 16px;
+  }
+
+  .mobile-spend-item {
+    display: grid;
+    gap: 4px;
+    padding: 10px;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+  }
+
+  .mobile-spend-item strong {
+    color: #0f172a;
+    font-size: 15px;
+  }
+
+  .mobile-record-performance {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    margin: 0 16px;
+    padding: 12px 0;
+    border-top: 1px solid #e2e8f0;
+    border-bottom: 1px solid #e2e8f0;
+  }
+
+  .mobile-record-performance > div {
+    display: grid;
+    gap: 4px;
+    text-align: center;
+  }
+
+  .mobile-record-performance > div + div {
+    border-left: 1px solid #e2e8f0;
+  }
+
+  .mobile-record-performance strong {
+    color: #0f172a;
+    font-size: 14px;
+  }
+
+  .mobile-record-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    padding: 12px 16px 16px;
+  }
+
+  .mobile-record-actions .small-action {
+    min-height: 40px;
   }
 }

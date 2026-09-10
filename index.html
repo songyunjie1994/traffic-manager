@@ -9,7 +9,7 @@
       content="以云端数据为主，支持充值登记、消耗录入与投流报表的管理系统。"
     />
     <title>投流管理系统</title>
-    <link rel="stylesheet" href="styles.css?v=1.7.9" />
+    <link rel="stylesheet" href="styles.css?v=1.8.0" />
   </head>
   <body>
     <div class="app-shell">
@@ -219,6 +219,8 @@
 
             <div class="record-summary" id="recordSummary"></div>
 
+            <div class="record-mobile-list" id="recordMobileList"></div>
+
             <article class="panel table-panel">
               <div class="table-scroll">
                 <table class="records-table">
@@ -242,12 +244,12 @@
                   <tbody id="recordTableBody"></tbody>
                 </table>
               </div>
-              <div class="empty-state hidden" id="recordEmptyState">
-                <div class="empty-icon">↗</div>
-                <h3>当前范围没有数据</h3>
-                <p>调整日期范围，或录入一条新的投流数据。</p>
-              </div>
             </article>
+            <div class="empty-state hidden" id="recordEmptyState">
+              <div class="empty-icon">↗</div>
+              <h3>当前范围没有数据</h3>
+              <p>调整日期范围，或录入一条新的投流数据。</p>
+            </div>
           </section>
 
           <section class="view" id="backupView">
@@ -518,6 +520,6 @@
     </div>
 
     <div class="toast-region" id="toastRegion" aria-live="polite"></div>
-    <script src="app.js?v=1.7.9"></script>
+    <script src="app.js?v=1.8.0"></script>
   </body>
 </html>
