@@ -525,67 +525,10 @@ function renderSelectOptions() {
 }
 
 function renderDashboard() {
-  const date = $("#dashboardDate").value || localDate();
-  const todayRecords = recordsForDate(date);
-  const previousRecords = recordsForDate(offsetDate(date, -1));
-  const todayRecharges = state.recharges.filter((item) => item.date === date);
-  const previousRecharges = state.recharges.filter((item) => item.date === offsetDate(date, -1));
-  const cumulativeRecharges = state.recharges.filter((item) => item.date <= date && isFundedRecharge(item));
-  const cumulativeRecords = state.records.filter((item) => item.date <= date);
-  const recharge = sum(todayRecharges.filter(isFundedRecharge), "amount");
-  const previousRecharge = sum(previousRecharges.filter(isFundedRecharge), "amount");
-  const spend = sum(todayRecords, "spend");
-  const revenue = sum(todayRecords, "revenue");
-  const orders = sum(todayRecords, "orders");
-  const balance = sum(cumulativeRecharges, "amount") - sum(cumulativeRecords, "spend");
-  const roi = ratio(revenue, spend);
-  const previousSpend = sum(previousRecords, "spend");
-  const previousRevenue = sum(previousRecords, "revenue");
-  const previousRoi = ratio(previousRevenue, previousSpend);
-
-  const cards = [
-    {
-      label: "当日充值金额",
-      icon: "+",
-      value: money(recharge),
-      note: trendNote(recharge, previousRecharge, "较前一日"),
-    },
-    {
-      label: "当日消耗",
-      icon: "↗",
-      value: money(spend),
-      note: trendNote(spend, previousSpend, "较前一日"),
-    },
-    {
-      label: "账户总余额",
-      icon: "¥",
-      value: money(balance),
-      note: `<span>累计充值减累计消耗</span>`,
-    },
-    {
-      label: "当日整体 ROI",
-      icon: "◎",
-      value: roi.toFixed(2),
-      note: previousRoi ? trendNote(roi, previousRoi, "较前一日") : `<span>${orders} 单 · 成交 ${money(revenue)}</span>`,
-    },
-  ];
-
-  $("#kpiGrid").innerHTML = cards.map((card) => `
-    <article class="kpi-card">
-      <div class="kpi-label"><span>${card.label}</span><span class="kpi-icon">${card.icon}</span></div>
-      <div class="kpi-value">${card.value}</div>
-      <div class="kpi-footnote">${card.note}</div>
-    </article>
-  `).join("");
-
-  $("#dashboardSummary").textContent = todayRecords.length || todayRecharges.length
-    ? `${formatDate(date)}：充值 ${todayRecharges.length} 笔、消耗 ${todayRecords.length} 条，账户总余额 ${money(balance)}。`
-    : `${formatDate(date)} 暂无充值和消耗数据，可前往对应业务端开始录入。`;
-  $("#dataModeBadge").textContent = cloudReady ? (state.demo ? "云端演示数据" : "云端数据") : "本地缓存";
-
-  renderTrend(date);
-  renderAlerts(todayRecords, date);
-  renderRanking(todayRecords, date);
+  // 报表端数据已清空（2026-09-12）：原「充值、消耗与账户余额」汇总展示下线（KPI 卡/趋势图/提醒/账户对账表）。
+  // 待余额勾稽公式（8月31日余额 + 充值端到账金额 − 消耗 = 财务余额）确定后重建渲染。
+  const badge = $("#dataModeBadge");
+  if (badge) badge.textContent = cloudReady ? (state.demo ? "云端演示数据" : "云端数据") : "本地缓存";
 }
 
 function trendNote(current, previous, label) {
