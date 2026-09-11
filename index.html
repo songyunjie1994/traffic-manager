@@ -9,7 +9,7 @@
       content="以云端数据为主，支持充值登记、消耗录入与投流报表的管理系统。"
     />
     <title>投流管理系统</title>
-    <link rel="stylesheet" href="styles.css?v=1.9.0" />
+    <link rel="stylesheet" href="styles.css?v=1.3.0" />
   </head>
   <body>
     <div class="app-shell">
@@ -74,7 +74,10 @@
             </div>
           </div>
           <div class="topbar-actions">
-            <button class="button button-secondary" id="exportReportExcelButton">导出 Excel</button>
+            <div class="date-control" title="看板统计日期">
+              <span aria-hidden="true">◷</span>
+              <input type="date" id="dashboardDate" aria-label="看板统计日期" />
+            </div>
             <button class="button button-primary" id="quickRecordButton">
               <span aria-hidden="true">＋</span> 录入今日数据
             </button>
@@ -83,62 +86,74 @@
 
         <div class="content-wrap">
           <section class="view active" id="dashboardView">
-            <div class="status-switch report-switch" id="reportPageSwitch" aria-label="报表页面切换">
-              <button class="status-switch-button active" type="button" data-report-page="consumption">消耗数据</button>
-              <button class="status-switch-button" type="button" data-report-page="finance">财务数据</button>
-              <button class="status-switch-button" type="button" data-report-page="comparison">数据比对</button>
+            <div class="welcome-row">
+              <div>
+                <p class="section-kicker">数据概览</p>
+                <h2>充值、消耗与账户余额</h2>
+                <p id="dashboardSummary">正在汇总投流表现…</p>
+              </div>
+              <div class="welcome-actions">
+                <span class="data-mode-badge" id="dataModeBadge">演示数据</span>
+                <button class="text-button" data-jump-view="backup">数据备份</button>
+              </div>
             </div>
 
-            <div class="report-filter-panel panel">
-              <label class="search-box report-search-box">
-                <span>关键词</span>
-                <input type="search" id="reportSearch" aria-label="报表关键词搜索" placeholder="账户、抖音号或达人昵称" />
-              </label>
-              <input type="date" id="reportStartDate" aria-label="报表开始日期" />
-              <span class="range-separator">至</span>
-              <input type="date" id="reportEndDate" aria-label="报表结束日期" />
-            </div>
+            <div class="kpi-grid" id="kpiGrid"></div>
 
-            <div class="report-page" id="reportConsumptionPage">
-              <div class="record-summary" id="reportConsumptionSummary"></div>
-              <article class="panel table-panel">
-                <div class="table-scroll report-table-scroll">
-                  <table class="report-detail-table">
-                    <thead><tr>
-                      <th>日期</th><th>千川账户</th><th>数据类型</th><th>抖音号</th><th>达人昵称</th>
-                      <th class="number-cell">综合营销 ROI</th><th class="number-cell">净成交金额</th>
-                      <th class="number-cell">净成交订单数</th><th class="number-cell">用户实际支付净成交金额</th>
-                      <th class="number-cell">1小时内退款率</th><th class="number-cell">净成交金额结算率</th>
-                      <th class="number-cell">整体成交金额</th><th class="number-cell">综合成本</th>
-                      <th class="number-cell">整体消耗</th><th class="number-cell">综合订单成本</th>
-                      <th class="number-cell">预估达人佣金</th>
-                    </tr></thead>
-                    <tbody id="reportConsumptionBody"></tbody>
-                  </table>
+            <div class="dashboard-grid">
+              <article class="panel performance-panel">
+                <div class="panel-header">
+                  <div>
+                    <p class="section-kicker">7 日资金趋势</p>
+                    <h3>充值与消耗</h3>
+                  </div>
+                  <div class="chart-legend" aria-label="图例">
+                    <span><i class="legend-revenue"></i>充值</span>
+                    <span><i class="legend-spend"></i>消耗</span>
+                  </div>
                 </div>
+                <div class="chart-wrap">
+                  <svg id="trendChart" class="trend-chart" viewBox="0 0 760 270" role="img" aria-label="最近七天充值与消耗趋势"></svg>
+                </div>
+              </article>
+
+              <article class="panel action-panel">
+                <div class="panel-header">
+                  <div>
+                    <p class="section-kicker">优化提醒</p>
+                    <h3>今日待关注</h3>
+                  </div>
+                  <span class="count-pill" id="alertCount">0</span>
+                </div>
+                <div class="alert-list" id="alertList"></div>
               </article>
             </div>
 
-            <div class="report-page hidden" id="reportFinancePage">
-              <div class="record-summary" id="reportFinanceSummary"></div>
-              <article class="panel table-panel"><div class="table-scroll">
-                <table><thead><tr>
-                  <th>日期</th><th>千川账户</th><th>账户 ID</th>
-                  <th class="number-cell">余额总消耗</th><th class="number-cell">非赠款消耗</th><th class="number-cell">赠款消耗</th>
-                </tr></thead><tbody id="reportFinanceBody"></tbody></table>
-              </div></article>
-            </div>
-
-            <div class="report-page hidden" id="reportComparisonPage">
-              <div class="record-summary" id="reportComparisonSummary"></div>
-              <article class="panel table-panel"><div class="table-scroll">
-                <table><thead><tr>
-                  <th>日期</th><th>千川账户</th><th>账户 ID</th>
-                  <th class="number-cell">投流整体消耗</th><th class="number-cell">财务余额总消耗</th>
-                  <th class="number-cell">差额</th><th>比对结果</th>
-                </tr></thead><tbody id="reportComparisonBody"></tbody></table>
-              </div></article>
-            </div>
+            <article class="panel ranking-panel">
+              <div class="panel-header">
+                <div>
+                  <p class="section-kicker">账户对账</p>
+                  <h3>账户资金与投放表现</h3>
+                </div>
+                <button class="text-button" data-jump-view="campaigns">去充值端 <span>→</span></button>
+              </div>
+              <div class="table-scroll">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>账户 / 投流计划</th>
+                      <th>平台</th>
+                      <th class="number-cell">累计充值</th>
+                      <th class="number-cell">累计消耗</th>
+                      <th class="number-cell">账户余额</th>
+                      <th class="number-cell">ROI</th>
+                      <th>状态</th>
+                    </tr>
+                  </thead>
+                  <tbody id="rankingTableBody"></tbody>
+                </table>
+              </div>
+            </article>
           </section>
 
           <section class="view compact-ledger-view" id="campaignsView" data-screen-label="充值端">
@@ -181,18 +196,18 @@
               <div>
                 <p class="section-kicker">消耗登记</p>
                 <h2>消耗端</h2>
-                <p>按日期和达人查看整体消耗、整体成交金额与整体 ROI。</p>
+                <p>记录各广告账户每日消耗、点击、订单与成交金额。</p>
               </div>
               <div class="toolbar-actions">
-                <button class="button button-secondary" id="exportCsvButton">导出 Excel</button>
+                <button class="button button-secondary" id="exportCsvButton">导出 CSV</button>
                 <button class="button button-primary" id="addRecordButton">＋ 录入数据</button>
               </div>
             </div>
 
             <div class="filter-bar records-filter">
               <label class="search-field">
-                <span>关键词</span>
-                <input type="search" id="recordSearch" aria-label="关键词搜索" placeholder="账户、达人昵称、抖音号或备注" />
+                <span aria-hidden="true">⌕</span>
+                <input type="search" id="recordSearch" placeholder="搜索计划名称或备注" />
               </label>
               <input type="date" id="recordStartDate" aria-label="开始日期" />
               <span class="range-separator">至</span>
@@ -204,30 +219,31 @@
 
             <div class="record-summary" id="recordSummary"></div>
 
-            <div class="record-mobile-list" id="recordMobileList"></div>
-
             <article class="panel table-panel">
               <div class="table-scroll">
                 <table class="records-table">
                   <thead>
                     <tr>
                       <th>日期</th>
-                      <th>抖音号</th>
                       <th>达人昵称</th>
+                      <th>抖音号</th>
+                      <th class="number-cell">整体ROI</th>
                       <th class="number-cell">整体消耗</th>
                       <th class="number-cell">整体成交金额</th>
-                      <th class="number-cell">整体 ROI</th>
+                      <th class="number-cell">净ROI</th>
+                      <th class="number-cell">净成交金额</th>
+                      <th class="action-cell">操作</th>
                     </tr>
                   </thead>
                   <tbody id="recordTableBody"></tbody>
                 </table>
               </div>
+              <div class="empty-state hidden" id="recordEmptyState">
+                <div class="empty-icon">↗</div>
+                <h3>当前范围没有数据</h3>
+                <p>调整日期范围，或录入一条新的投流数据。</p>
+              </div>
             </article>
-            <div class="empty-state hidden" id="recordEmptyState">
-              <div class="empty-icon">↗</div>
-              <h3>当前范围没有数据</h3>
-              <p>调整日期范围，或录入一条新的投流数据。</p>
-            </div>
           </section>
 
           <section class="view" id="backupView">
@@ -460,6 +476,7 @@
           <div class="payment-ocr-status-row"><span id="paymentOcrMessage">正在识别…</span><strong id="paymentOcrPercent">0%</strong></div>
           <div class="payment-ocr-progress"><span id="paymentOcrProgress"></span></div>
         </div>
+        <label class="form-field span-3"><span>智谱 API Key（<a href="https://open.bigmodel.cn" target="_blank" rel="noopener">open.bigmodel.cn</a> 免费申请，仅保存在本机浏览器）</span><input id="zhipuApiKey" type="password" autocomplete="off" placeholder="粘贴 API Key，用 GLM-4V 识别付款截图" /></label>
         <div class="form-grid payment-form-grid">
           <label class="form-field"><span>付款日期 *</span><input id="paymentDate" type="date" required /></label>
           <label class="form-field"><span>付款金额（元）*</span><input id="paymentAmount" type="number" min="0.01" step="0.01" inputmode="decimal" required placeholder="识别后可修改金额" /></label>
@@ -470,7 +487,7 @@
           <label class="form-field"><span>收款方银行</span><input id="paymentPayeeBank" maxlength="60" placeholder="开户行 / 支付渠道，选填" /></label>
           <label class="form-field"><span>收款方账号</span><input id="paymentPayeeAccount" maxlength="40" placeholder="卡号 / 支付账号，选填" /></label>
         </div>
-        <p class="payment-privacy">付款截图由智谱视觉模型识别并保存至 Supabase 私有凭证空间；付款记录只保存图片路径，可在列表中点击“凭证”查看。</p>
+        <p class="payment-privacy">付款截图由智谱 GLM-4V 大模型识别（默认已绑定 API Key，也可在上方填写自己的 Key）；确认保存后同步日期、金额与双方付款信息。</p>
         <div class="modal-actions"><button type="button" class="button button-ghost" data-close-modal="paymentModal">取消</button><button type="submit" class="button button-primary">保存付款记录</button></div>
       </form>
     </div>
@@ -487,18 +504,7 @@
       </div>
     </div>
 
-    <div class="modal-backdrop hidden" id="receiptImageModal" role="dialog" aria-modal="true" aria-labelledby="receiptImageTitle">
-      <div class="modal receipt-image-modal">
-        <div class="modal-header">
-          <div><p class="section-kicker">付款记录</p><h2 id="receiptImageTitle">付款凭证</h2></div>
-          <button type="button" class="icon-button modal-close" data-close-modal="receiptImageModal" aria-label="关闭">×</button>
-        </div>
-        <div class="receipt-image-frame"><img id="receiptImage" alt="付款凭证图片" /></div>
-      </div>
-    </div>
-
     <div class="toast-region" id="toastRegion" aria-live="polite"></div>
-    <script src="excel-export.js?v=1.9.0"></script>
-    <script src="app.js?v=1.9.0"></script>
+    <script src="app.js?v=1.5.0"></script>
   </body>
 </html>
