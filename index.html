@@ -89,8 +89,8 @@
             <div class="welcome-row">
               <div>
                 <p class="section-kicker">数据概览</p>
-                <h2>充值、消耗与账户余额</h2>
-                <p id="dashboardSummary">正在汇总投流表现…</p>
+                <h2>报表端</h2>
+                <p id="dashboardSummary">报表端数据已清空，展示逻辑调整中。</p>
               </div>
               <div class="welcome-actions">
                 <span class="data-mode-badge" id="dataModeBadge">演示数据</span>
@@ -98,60 +98,11 @@
               </div>
             </div>
 
-            <div class="kpi-grid" id="kpiGrid"></div>
-
-            <div class="dashboard-grid">
-              <article class="panel performance-panel">
-                <div class="panel-header">
-                  <div>
-                    <p class="section-kicker">7 日资金趋势</p>
-                    <h3>充值与消耗</h3>
-                  </div>
-                  <div class="chart-legend" aria-label="图例">
-                    <span><i class="legend-revenue"></i>充值</span>
-                    <span><i class="legend-spend"></i>消耗</span>
-                  </div>
-                </div>
-                <div class="chart-wrap">
-                  <svg id="trendChart" class="trend-chart" viewBox="0 0 760 270" role="img" aria-label="最近七天充值与消耗趋势"></svg>
-                </div>
-              </article>
-
-              <article class="panel action-panel">
-                <div class="panel-header">
-                  <div>
-                    <p class="section-kicker">优化提醒</p>
-                    <h3>今日待关注</h3>
-                  </div>
-                  <span class="count-pill" id="alertCount">0</span>
-                </div>
-                <div class="alert-list" id="alertList"></div>
-              </article>
-            </div>
-
-            <article class="panel ranking-panel">
-              <div class="panel-header">
-                <div>
-                  <p class="section-kicker">账户对账</p>
-                  <h3>账户资金与投放表现</h3>
-                </div>
-                <button class="text-button" data-jump-view="campaigns">去充值端 <span>→</span></button>
-              </div>
-              <div class="table-scroll">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>账户 / 投流计划</th>
-                      <th>平台</th>
-                      <th class="number-cell">累计充值</th>
-                      <th class="number-cell">累计消耗</th>
-                      <th class="number-cell">账户余额</th>
-                      <th class="number-cell">ROI</th>
-                      <th>状态</th>
-                    </tr>
-                  </thead>
-                  <tbody id="rankingTableBody"></tbody>
-                </table>
+            <article class="panel">
+              <div class="empty-state">
+                <div class="empty-icon">∑</div>
+                <h3>报表端调整中</h3>
+                <p>原「充值、消耗与账户余额」汇总展示已下线。余额勾稽逻辑（8月31日余额 + 充值端到账金额 − 消耗 = 财务余额）确定后上线。</p>
               </div>
             </article>
           </section>
