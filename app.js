@@ -19,7 +19,7 @@ const PAYMENT_AI_CONFIG = Object.freeze({
 });
 const PLATFORMS = ["巨量引擎", "千川", "小红书", "视频号", "快手", "百度", "其他"];
 const VIEW_META = {
-  dashboard: ["查看充值、消耗与账户余额汇总", "报表端"],
+  dashboard: ["查看消耗明细、财务日结与数据比对", "报表端"],
   campaigns: ["管理充值、付款与待付款记录", "充值端"],
   records: ["记录每日消耗和成交数据", "消耗端"],
   backup: ["导出、恢复与管理云端数据", "数据备份"],
