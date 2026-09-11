@@ -1,7 +1,7 @@
 "use strict";
 
 const STORAGE_KEY = "traffic_manager_data_v1";
-const APP_VERSION = "1.9.0";
+const APP_VERSION = "1.5.0";
 const CLOUD_ROW_ID = 2;
 const RECHARGE_WORKFLOW_VERSION = "2026-08-29-v1";
 const REQUIRED_ACCOUNT_NAMES = ["杭州夕雾", "MELBOURNE", "江西井意", "浏阳市关口韵帆", "ISAMORVAN", "研汁工社"];
@@ -10,16 +10,20 @@ const RECHARGE_LEDGER_META = Object.freeze({
   payment: { title: "付款记录", dateLabel: "付款日期", accountLabel: "付款方", amountLabel: "付款金额", addLabel: "＋ 上传付款截图" },
   pending: { title: "待付款", dateLabel: "登记日期", accountLabel: "待付款账户", amountLabel: "待付金额", addLabel: "" },
 });
+const ZHIPU_VISION_CONFIG = Object.freeze({
+  endpoint: "https://open.bigmodel.cn/api/paas/v4/chat/completions",
+  model: "glm-4v-flash",
+  keyStorageKey: "traffic_manager_zhipu_api_key",
+  defaultApiKey: "2850c4bd97444eaf832119a49e23f54a.OojmSYrwr05W6qKm",
+});
+const VISION_PROMPT = "这是付款或转账截图。请识别并只输出一个 JSON 对象，不要输出任何其他文字：{\"date\":\"YYYY-MM-DD\",\"amount\":数字,\"payer\":\"付款方名称\",\"payerBank\":\"付款方银行\",\"payerAccount\":\"付款方账号\",\"payee\":\"收款方名称\",\"payeeBank\":\"收款方银行\",\"payeeAccount\":\"收款方账号\"}。date 填截图中的交易日期（没有则填空字符串）；amount 填付款金额的纯数字，不含单位和千分位逗号；payer/payee 填付款方、收款方的户名或名称；银行填开户行或支付渠道名称（如：工商银行、支付宝、微信支付）；账号填银行卡号或支付账号；识别不到的字段一律填空字符串。";
 const CLOUD_CONFIG = Object.freeze({
   url: "https://mabxdkjqilulkrmqrrgo.supabase.co",
   publishableKey: "sb_publishable_lfHpd1y1gCaQIDXfRkD_8w_O1bPMWGx",
 });
-const PAYMENT_AI_CONFIG = Object.freeze({
-  url: `${CLOUD_CONFIG.url}/functions/v1/payment-recognize`,
-});
 const PLATFORMS = ["巨量引擎", "千川", "小红书", "视频号", "快手", "百度", "其他"];
 const VIEW_META = {
-  dashboard: ["查看消耗明细、财务日结与数据比对", "报表端"],
+  dashboard: ["查看充值、消耗与账户余额汇总", "报表端"],
   campaigns: ["管理充值、付款与待付款记录", "充值端"],
   records: ["记录每日消耗和成交数据", "消耗端"],
   backup: ["导出、恢复与管理云端数据", "数据备份"],
@@ -32,9 +36,7 @@ let cloudInitializationPromise = null;
 let lastCloudSnapshot = "";
 let lastCloudRefreshAt = 0;
 let activeRechargeLedger = "recharge";
-let activeReportPage = "consumption";
 let paymentOcrResult = null;
-let receiptImageObjectUrl = "";
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
@@ -149,7 +151,6 @@ function createDemoState() {
     campaigns,
     recharges,
     records,
-    financeRecords: [],
     settings: { initializedAt: new Date().toISOString() },
   };
 }
@@ -161,7 +162,6 @@ function emptyState() {
     campaigns: [],
     recharges: [],
     records: [],
-    financeRecords: [],
     settings: { initializedAt: new Date().toISOString() },
   };
 }
@@ -176,7 +176,6 @@ function normalizeState(candidate) {
     campaigns: candidate.campaigns.map((item) => ({ ...item })),
     recharges: Array.isArray(candidate.recharges) ? candidate.recharges.map((item) => ({ ...item })) : [],
     records: candidate.records.map((item) => ({ ...item })),
-    financeRecords: Array.isArray(candidate.financeRecords) ? candidate.financeRecords.map((item) => ({ ...item })) : [],
     settings: candidate.settings && typeof candidate.settings === "object" ? candidate.settings : {},
   };
 }
@@ -526,137 +525,67 @@ function renderSelectOptions() {
 }
 
 function renderDashboard() {
-  const consumptionRecords = filteredReportRecords();
-  const detailRows = reportConsumptionRows(consumptionRecords);
-  const financeRows = filteredFinanceRecords();
-  const comparisonRows = reportComparisonRows(consumptionRecords, financeRows);
-  const spend = detailRows.reduce((total, row) => total + Number(row.metrics.spend || 0), 0);
-  const revenue = detailRows.reduce((total, row) => total + Number(row.metrics.revenue || 0), 0);
-  $("#reportConsumptionSummary").innerHTML = summaryChips([
-    ["明细数", `${detailRows.length} 条`], ["整体消耗", money(spend)],
-    ["整体成交金额", money(revenue)], ["整体 ROI", ratio(revenue, spend).toFixed(2)]
-  ]);
-  $("#reportConsumptionBody").innerHTML = detailRows.map((row) => `
-    <tr><td>${formatDate(row.date)}</td><td>${escapeHtml(row.account)}</td><td>${escapeHtml(row.sourceLabel)}</td>
-      <td class="account-id-cell">${escapeHtml(row.douyinNumber || "—")}</td><td>${escapeHtml(row.douyinName || "—")}</td>
-      ${reportMetricCells(row.metrics)}</tr>`).join("");
+  const date = $("#dashboardDate").value || localDate();
+  const todayRecords = recordsForDate(date);
+  const previousRecords = recordsForDate(offsetDate(date, -1));
+  const todayRecharges = state.recharges.filter((item) => item.date === date);
+  const previousRecharges = state.recharges.filter((item) => item.date === offsetDate(date, -1));
+  const cumulativeRecharges = state.recharges.filter((item) => item.date <= date && isFundedRecharge(item));
+  const cumulativeRecords = state.records.filter((item) => item.date <= date);
+  const recharge = sum(todayRecharges.filter(isFundedRecharge), "amount");
+  const previousRecharge = sum(previousRecharges.filter(isFundedRecharge), "amount");
+  const spend = sum(todayRecords, "spend");
+  const revenue = sum(todayRecords, "revenue");
+  const orders = sum(todayRecords, "orders");
+  const balance = sum(cumulativeRecharges, "amount") - sum(cumulativeRecords, "spend");
+  const roi = ratio(revenue, spend);
+  const previousSpend = sum(previousRecords, "spend");
+  const previousRevenue = sum(previousRecords, "revenue");
+  const previousRoi = ratio(previousRevenue, previousSpend);
 
-  const balanceSpend = sum(financeRows, "balanceTotalSpend");
-  $("#reportFinanceSummary").innerHTML = summaryChips([
-    ["财务日结", `${financeRows.length} 条`], ["余额总消耗", money(balanceSpend)],
-    ["非赠款消耗", money(sum(financeRows, "nonGrantSpend"))], ["赠款消耗", money(sum(financeRows, "giftSpend"))]
-  ]);
-  $("#reportFinanceBody").innerHTML = financeRows.map((row) => `
-    <tr><td>${formatDate(row.date)}</td><td>${escapeHtml(row.advertiserName || campaignById(row.campaignId)?.name || "—")}</td>
-      <td class="account-id-cell">${escapeHtml(row.advertiserId || "—")}</td>
-      <td class="number-cell">${money(row.balanceTotalSpend, 2)}</td><td class="number-cell">${money(row.nonGrantSpend, 2)}</td>
-      <td class="number-cell">${money(row.giftSpend, 2)}</td></tr>`).join("");
+  const cards = [
+    {
+      label: "当日充值金额",
+      icon: "+",
+      value: money(recharge),
+      note: trendNote(recharge, previousRecharge, "较前一日"),
+    },
+    {
+      label: "当日消耗",
+      icon: "↗",
+      value: money(spend),
+      note: trendNote(spend, previousSpend, "较前一日"),
+    },
+    {
+      label: "账户总余额",
+      icon: "¥",
+      value: money(balance),
+      note: `<span>累计充值减累计消耗</span>`,
+    },
+    {
+      label: "当日整体 ROI",
+      icon: "◎",
+      value: roi.toFixed(2),
+      note: previousRoi ? trendNote(roi, previousRoi, "较前一日") : `<span>${orders} 单 · 成交 ${money(revenue)}</span>`,
+    },
+  ];
 
-  const matched = comparisonRows.filter((row) => row.matched).length;
-  $("#reportComparisonSummary").innerHTML = summaryChips([
-    ["比对账户日", `${comparisonRows.length} 条`], ["一致", `${matched} 条`],
-    ["有差额", `${comparisonRows.length - matched} 条`],
-    ["差额合计", money(comparisonRows.reduce((total, row) => total + row.difference, 0))]
-  ]);
-  $("#reportComparisonBody").innerHTML = comparisonRows.map((row) => `
-    <tr><td>${formatDate(row.date)}</td><td>${escapeHtml(row.account)}</td><td class="account-id-cell">${escapeHtml(row.advertiserId || "—")}</td>
-      <td class="number-cell">${money(row.consumptionSpend, 2)}</td><td class="number-cell">${money(row.financeSpend, 2)}</td>
-      <td class="number-cell"><strong>${money(row.difference, 2)}</strong></td>
-      <td><span class="status-badge ${row.matched ? "" : "ended"}">${row.matched ? "一致" : "有差额"}</span></td></tr>`).join("");
+  $("#kpiGrid").innerHTML = cards.map((card) => `
+    <article class="kpi-card">
+      <div class="kpi-label"><span>${card.label}</span><span class="kpi-icon">${card.icon}</span></div>
+      <div class="kpi-value">${card.value}</div>
+      <div class="kpi-footnote">${card.note}</div>
+    </article>
+  `).join("");
 
-  $$("[data-report-page]").forEach((button) => button.classList.toggle("active", button.dataset.reportPage === activeReportPage));
-  $("#reportConsumptionPage").classList.toggle("hidden", activeReportPage !== "consumption");
-  $("#reportFinancePage").classList.toggle("hidden", activeReportPage !== "finance");
-  $("#reportComparisonPage").classList.toggle("hidden", activeReportPage !== "comparison");
-}
+  $("#dashboardSummary").textContent = todayRecords.length || todayRecharges.length
+    ? `${formatDate(date)}：充值 ${todayRecharges.length} 笔、消耗 ${todayRecords.length} 条，账户总余额 ${money(balance)}。`
+    : `${formatDate(date)} 暂无充值和消耗数据，可前往对应业务端开始录入。`;
+  $("#dataModeBadge").textContent = cloudReady ? (state.demo ? "云端演示数据" : "云端数据") : "本地缓存";
 
-const REPORT_SOURCES = Object.freeze([
-  ["chengfangLive", "乘方直播"], ["chengfangProduct", "乘方商品"],
-  ["globalLive", "全域直播"], ["globalProduct", "全域商品"]
-]);
-
-function reportRangeMatches(item) {
-  const start = $("#reportStartDate")?.value || "";
-  const end = $("#reportEndDate")?.value || "";
-  return (!start || item.date >= start) && (!end || item.date <= end);
-}
-
-function reportQueryMatches(values) {
-  const query = $("#reportSearch")?.value.trim().toLowerCase() || "";
-  return !query || values.join(" ").toLowerCase().includes(query);
-}
-
-function filteredReportRecords() {
-  return state.records.filter((record) => {
-    const campaign = campaignById(record.campaignId);
-    return reportRangeMatches(record) && reportQueryMatches([
-      campaign?.name || "", campaign?.account || "", record.douyinName || "", record.douyinNumber || ""
-    ]);
-  });
-}
-
-function filteredFinanceRecords() {
-  return (state.financeRecords || []).filter((record) => reportRangeMatches(record)
-    && reportQueryMatches([record.advertiserName || "", record.advertiserId || "", campaignById(record.campaignId)?.name || ""]))
-    .sort((left, right) => right.date.localeCompare(left.date) || String(left.advertiserName).localeCompare(String(right.advertiserName)));
-}
-
-function reportSourcePresent(metrics) {
-  if (!metrics) return false;
-  if (metrics.present === true) return true;
-  return Object.entries(metrics).some(([key, value]) => key !== "present" && Number(value || 0) !== 0);
-}
-
-function reportConsumptionRows(records) {
-  return records.flatMap((record) => {
-    const campaign = campaignById(record.campaignId);
-    return REPORT_SOURCES.map(([source, sourceLabel]) => ({
-      date: record.date,
-      account: campaign?.name || campaign?.account || record.advertiserId || "—",
-      advertiserId: record.advertiserId || campaign?.advertiserId || "",
-      douyinNumber: record.douyinNumber || "",
-      douyinName: record.douyinName || "",
-      source,
-      sourceLabel,
-      metrics: record.performanceBreakdown?.[source]
-    })).filter((row) => reportSourcePresent(row.metrics));
-  }).sort((left, right) => right.date.localeCompare(left.date) || left.account.localeCompare(right.account));
-}
-
-function reportMetricCells(metrics) {
-  const percent = (value) => value == null ? "—" : `${Number(value).toFixed(2)}%`;
-  const amount = (value) => value == null ? "—" : money(value, 2);
-  return [
-    Number(metrics.sourceRoi || 0).toFixed(2), amount(metrics.netRevenue), number(metrics.netOrders || 0),
-    amount(metrics.paidNetRevenue), percent(metrics.oneHourRefundRate), percent(metrics.netSettlementRate),
-    amount(metrics.revenue), amount(metrics.comprehensiveCost), amount(metrics.spend), amount(metrics.orderCost),
-    amount(metrics.creatorCommission)
-  ].map((value) => `<td class="number-cell">${value}</td>`).join("");
-}
-
-function reportComparisonRows(consumptionRecords, financeRows) {
-  const rows = new Map();
-  const bucket = (date, advertiserId, account) => {
-    const key = `${date}|${advertiserId || account}`;
-    if (!rows.has(key)) rows.set(key, { date, advertiserId, account, consumptionSpend: 0, financeSpend: 0 });
-    return rows.get(key);
-  };
-  for (const record of consumptionRecords) {
-    const campaign = campaignById(record.campaignId);
-    const advertiserId = record.advertiserId || campaign?.advertiserId || "";
-    bucket(record.date, advertiserId, campaign?.name || campaign?.account || advertiserId || "—").consumptionSpend += Number(record.spend || 0);
-  }
-  for (const record of financeRows) {
-    bucket(record.date, record.advertiserId || "", record.advertiserName || campaignById(record.campaignId)?.name || "—").financeSpend += Number(record.balanceTotalSpend || 0);
-  }
-  return [...rows.values()].map((row) => {
-    const difference = Math.round((row.consumptionSpend - row.financeSpend) * 100) / 100;
-    return { ...row, difference, matched: Math.abs(difference) <= 0.01 };
-  }).sort((left, right) => right.date.localeCompare(left.date) || left.account.localeCompare(right.account));
-}
-
-function summaryChips(items) {
-  return items.map(([label, value]) => `<div class="summary-chip"><span>${label}</span><strong>${value}</strong></div>`).join("");
+  renderTrend(date);
+  renderAlerts(todayRecords, date);
+  renderRanking(todayRecords, date);
 }
 
 function trendNote(current, previous, label) {
@@ -814,6 +743,19 @@ function setPaymentOcrStatus(message, progress = 0, stateName = "working") {
   $("#paymentOcrProgress").style.width = `${percent}%`;
 }
 
+function getZhipuApiKey() {
+  const saved = String(localStorage.getItem(ZHIPU_VISION_CONFIG.keyStorageKey) || "").trim();
+  return saved || ZHIPU_VISION_CONFIG.defaultApiKey;
+}
+
+function saveZhipuApiKey(value) {
+  try {
+    localStorage.setItem(ZHIPU_VISION_CONFIG.keyStorageKey, String(value || "").trim());
+  } catch (error) {
+    console.warn("保存 API Key 失败", error);
+  }
+}
+
 function fileToDataUrl(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -823,54 +765,62 @@ function fileToDataUrl(file) {
   });
 }
 
-async function callPaymentRecognition(dataUrl) {
-  const response = await fetch(PAYMENT_AI_CONFIG.url, {
+async function callZhipuVision(apiKey, dataUrl) {
+  const response = await fetch(ZHIPU_VISION_CONFIG.endpoint, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      apikey: CLOUD_CONFIG.publishableKey,
-    },
-    body: JSON.stringify({ imageDataUrl: dataUrl }),
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+    body: JSON.stringify({
+      model: ZHIPU_VISION_CONFIG.model,
+      temperature: 0.1,
+      messages: [{
+        role: "user",
+        content: [
+          { type: "image_url", image_url: { url: dataUrl } },
+          { type: "text", text: VISION_PROMPT },
+        ],
+      }],
+    }),
   });
-  const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
-    const errorMessages = {
-      AI_NOT_CONFIGURED: "云端 AI Key 尚未配置",
-      AI_AUTH_FAILED: "云端 AI Key 无效，请更换新 Key",
-      AI_RATE_LIMITED: "AI 调用过于频繁，请稍后再试",
-      RATE_LIMITED: "上传过于频繁，请稍后再试",
-      INVALID_IMAGE: "图片格式无效，请重新选择",
-      IMAGE_TOO_LARGE: "图片不能超过 8MB",
-      IMAGE_STORAGE_FAILED: "凭证图片保存失败，请稍后重试",
-      AI_OUTPUT_INVALID: "没有识别出完整付款信息，请换一张清晰截图",
-      ORIGIN_NOT_ALLOWED: "当前网址不允许调用图片识别",
-    };
-    throw new Error(errorMessages[payload?.error] || "云端识别暂时不可用，请稍后重试");
+    const detail = await response.text().catch(() => "");
+    if (response.status === 401) throw new Error("API Key 无效，请检查后重新填写");
+    if (response.status === 429) throw new Error("调用过于频繁，请稍后再试");
+    throw new Error(`接口错误 ${response.status} ${detail.slice(0, 100)}`);
   }
-  if (!payload?.result || typeof payload.result !== "object") throw new Error("云端识别返回格式异常");
-  return payload.result;
+  const data = await response.json();
+  return String(data?.choices?.[0]?.message?.content || "");
 }
 
-async function showPaymentReceiptImage(imagePath) {
-  if (!imagePath) return;
+function parseVisionAnswer(answer) {
+  const text = String(answer || "").replace(/```json|```/gi, "").trim();
+  const jsonText = text.match(/\{[\s\S]*\}/)?.[0] || "";
+  let date = "";
+  let amount = 0;
+  let payer = "";
+  let payerBank = "";
+  let payerAccount = "";
+  let payee = "";
+  let payeeBank = "";
+  let payeeAccount = "";
   try {
-    const response = await fetch(PAYMENT_AI_CONFIG.url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        apikey: CLOUD_CONFIG.publishableKey,
-      },
-      body: JSON.stringify({ action: "get-image", imagePath }),
-    });
-    if (!response.ok) throw new Error("凭证图片读取失败");
-    const blob = await response.blob();
-    if (receiptImageObjectUrl) URL.revokeObjectURL(receiptImageObjectUrl);
-    receiptImageObjectUrl = URL.createObjectURL(blob);
-    $("#receiptImage").src = receiptImageObjectUrl;
-    showModal("receiptImageModal");
+    const parsed = JSON.parse(jsonText || "{}");
+    date = String(parsed.date || "").trim();
+    amount = Number(String(parsed.amount ?? "").replace(/[^\d.]/g, "")) || 0;
+    payer = String(parsed.payer || "").trim();
+    payerBank = String(parsed.payerBank || "").trim();
+    payerAccount = String(parsed.payerAccount || "").trim();
+    payee = String(parsed.payee || "").trim();
+    payeeBank = String(parsed.payeeBank || "").trim();
+    payeeAccount = String(parsed.payeeAccount || "").trim();
   } catch (error) {
-    toast(error.message || "凭证图片读取失败", "error");
+    const amountMatch = text.match(/([1-9][\d,]*(?:\.\d{1,2})?)/);
+    if (amountMatch) amount = Number(amountMatch[1].replaceAll(",", "")) || 0;
   }
+  if (date && !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    const m = date.match(/(20\d{2})[-/年.](\d{1,2})[-/月.](\d{1,2})/);
+    date = m ? `${m[1]}-${String(m[2]).padStart(2, "0")}-${String(m[3]).padStart(2, "0")}` : "";
+  }
+  return { date, amount, payer, payerBank, payerAccount, payee, payeeBank, payeeAccount, confidence: 100 };
 }
 
 async function recognizePaymentImage(file) {
@@ -882,13 +832,20 @@ async function recognizePaymentImage(file) {
     toast("图片不能超过 8MB", "error");
     return;
   }
+  const apiKey = getZhipuApiKey();
+  if (!apiKey) {
+    setPaymentOcrStatus("请先在下方填写智谱 API Key（bigmodel.cn 免费申请）", 1, "error");
+    $("#zhipuApiKey").focus();
+    return;
+  }
   $("#paymentImageName").textContent = file.name;
   $("#paymentUploadButton").disabled = true;
   setPaymentOcrStatus("正在上传截图…", 0.2);
   try {
     const dataUrl = await fileToDataUrl(file);
-    setPaymentOcrStatus("云端 AI 正在识别付款信息…", 0.5);
-    const parsed = await callPaymentRecognition(dataUrl);
+    setPaymentOcrStatus("智谱 GLM-4V 正在识别付款信息…", 0.5);
+    const answer = await callZhipuVision(apiKey, dataUrl);
+    const parsed = parseVisionAnswer(answer);
     paymentOcrResult = parsed;
     if (parsed.date) $("#paymentDate").value = parsed.date;
     if (parsed.amount) $("#paymentAmount").value = parsed.amount;
@@ -899,7 +856,7 @@ async function recognizePaymentImage(file) {
     $("#paymentPayeeBank").value = parsed.payeeBank;
     $("#paymentPayeeAccount").value = parsed.payeeAccount;
     const missing = [!parsed.amount && "金额", !parsed.payer && "付款方", !parsed.payee && "收款方"].filter(Boolean);
-    setPaymentOcrStatus(missing.length ? `识别完成，请补充${missing.join("、")}` : "已按人民币金额识别，请确认后保存", 1, "success");
+    setPaymentOcrStatus(missing.length ? `识别完成，请补充${missing.join("、")}` : "识别完成，请确认后保存", 1, "success");
   } catch (error) {
     console.error(error);
     setPaymentOcrStatus(`识别失败：${error.message || "请重试或手动填写"}`, 1, "error");
@@ -928,12 +885,7 @@ function renderRecharges() {
   $("#addRechargeButton").textContent = meta.addLabel;
   $("#rechargeTableBody").innerHTML = rows.map((recharge) => {
     const campaign = campaignById(recharge.campaignId);
-    const receiptAction = activeRechargeLedger === "payment"
-      ? recharge.imagePath
-        ? `<button class="small-action receipt-action" data-action="view-payment-image" data-id="${escapeHtml(recharge.id)}">凭证</button>`
-        : `<button class="small-action receipt-action" data-action="attach-payment-image" data-id="${escapeHtml(recharge.id)}">补图片</button>`
-      : "";
-    const actions = activeRechargeLedger !== "pending" ? `<div class="table-actions">${receiptAction}<button class="small-action" data-action="edit-ledger" data-id="${escapeHtml(recharge.id)}">编辑</button><button class="small-action delete" data-action="delete-ledger" data-id="${escapeHtml(recharge.id)}">删除</button></div>` : "—";
+    const actions = activeRechargeLedger !== "pending" ? `<div class="table-actions"><button class="small-action" data-action="edit-ledger" data-id="${escapeHtml(recharge.id)}">编辑</button><button class="small-action delete" data-action="delete-ledger" data-id="${escapeHtml(recharge.id)}">删除</button></div>` : "—";
     if (activeRechargeLedger === "payment") {
       return `<tr>
         <td>${formatDate(recharge.date)}</td>
@@ -997,79 +949,61 @@ function filteredRecords() {
   const platform = $("#recordPlatformFilter").value;
   return state.records.filter((record) => {
     const campaign = campaignById(record.campaignId);
-    const haystack = [campaign?.name, campaign?.account, record.douyinName, record.douyinNumber, record.notes].join(" ").toLowerCase();
+    const haystack = [campaign?.name, campaign?.account, record.notes].join(" ").toLowerCase();
     return (!query || haystack.includes(query)) && (!start || record.date >= start) && (!end || record.date <= end) && (platform === "all" || campaign?.platform === platform);
   }).sort((a, b) => b.date.localeCompare(a.date) || String(b.createdAt).localeCompare(String(a.createdAt)));
 }
 
-function aggregatedConsumptionRecords(records) {
-  const grouped = new Map();
-  for (const record of records) {
-    const key = `${record.date}|${record.douyinNumber || record.douyinName || record.id}`;
-    if (!grouped.has(key)) grouped.set(key, {
-      date: record.date,
-      douyinNumber: record.douyinNumber || "",
-      douyinName: record.douyinName || "",
-      spend: 0,
-      revenue: 0
-    });
-    const row = grouped.get(key);
-    row.spend += Number(record.spend || 0);
-    row.revenue += Number(record.revenue || 0);
-    if (!row.douyinName && record.douyinName) row.douyinName = record.douyinName;
-  }
-  return [...grouped.values()].sort((left, right) => right.date.localeCompare(left.date)
-    || String(left.douyinNumber).localeCompare(String(right.douyinNumber)));
+// 消耗端统一口径：日期 / 达人昵称 / 抖音号 / 整体ROI / 整体消耗 / 整体成交金额 / 净ROI / 净成交金额
+// 新数据直接取千川同步写入的字段；旧数据从 spend/revenue 兜底换算，保证不显示空白。
+function recordMetrics(record) {
+  const totalSpend = Number(record.totalSpend ?? record.spend ?? 0) || 0;
+  const totalRevenue = Number(record.totalRevenue ?? record.revenue ?? 0) || 0;
+  const netRevenue = Number(record.netRevenue ?? 0) || 0;
+  const roi = record.roi != null ? Number(record.roi) : (totalSpend > 0 ? totalRevenue / totalSpend : 0);
+  const netRoi = record.netRoi != null ? Number(record.netRoi) : (totalSpend > 0 ? netRevenue / totalSpend : 0);
+  return { totalSpend, totalRevenue, netRevenue, roi: Number.isFinite(roi) ? roi : 0, netRoi: Number.isFinite(netRoi) ? netRoi : 0 };
 }
 
 function renderRecords() {
-  const rows = aggregatedConsumptionRecords(filteredRecords());
-  const spend = sum(rows, "spend");
-  const revenue = sum(rows, "revenue");
+  const rows = filteredRecords();
+  const metricsList = rows.map((record) => recordMetrics(record));
+  const totalSpend = metricsList.reduce((acc, item) => acc + item.totalSpend, 0);
+  const totalRevenue = metricsList.reduce((acc, item) => acc + item.totalRevenue, 0);
+  const netRevenue = metricsList.reduce((acc, item) => acc + item.netRevenue, 0);
+  const totalRoi = totalSpend > 0 ? totalRevenue / totalSpend : 0;
+  const totalNetRoi = totalSpend > 0 ? netRevenue / totalSpend : 0;
   const summary = [
-    ["整体消耗", money(spend)],
-    ["整体成交金额", money(revenue)],
-    ["整体 ROI", ratio(revenue, spend).toFixed(2)],
+    ["整体消耗", money(totalSpend)],
+    ["整体成交金额", money(totalRevenue)],
+    ["整体ROI", totalRoi.toFixed(2)],
+    ["净成交金额", money(netRevenue)],
+    ["净ROI", totalNetRoi.toFixed(2)],
   ];
   $("#recordSummary").innerHTML = summary.map(([label, value]) => `<div class="summary-chip"><span>${label}</span><strong>${value}</strong></div>`).join("");
 
   $("#recordTableBody").innerHTML = rows.map((record) => {
-    const roi = ratio(record.revenue, record.spend);
+    const { totalSpend: spend, totalRevenue: revenue, netRevenue: net, roi, netRoi } = recordMetrics(record);
     return `
       <tr>
         <td>${formatDate(record.date)}</td>
-        <td class="account-id-cell">${escapeHtml(record.douyinNumber || "—")}</td>
         <td>${escapeHtml(record.douyinName || "—")}</td>
-        <td class="number-cell"><strong>${money(record.spend, 2)}</strong></td>
-        <td class="number-cell">${money(record.revenue, 2)}</td>
-        <td class="number-cell"><span class="roi-value">${roi.toFixed(2)}</span></td>
+        <td>${escapeHtml(record.douyinNumber || "—")}</td>
+        <td class="number-cell"><span class="roi-value ${roi >= 1 ? "roi-good" : "roi-warn"}">${roi.toFixed(2)}</span></td>
+        <td class="number-cell">${money(spend, 2)}</td>
+        <td class="number-cell">${money(revenue, 2)}</td>
+        <td class="number-cell"><span class="roi-value ${netRoi >= 1 ? "roi-good" : "roi-warn"}">${netRoi.toFixed(2)}</span></td>
+        <td class="number-cell">${money(net, 2)}</td>
+        <td class="action-cell">
+          <div class="table-actions">
+            <button class="small-action" data-action="edit-record" data-id="${escapeHtml(record.id)}">编辑</button>
+            <button class="small-action delete" data-action="delete-record" data-id="${escapeHtml(record.id)}">删除</button>
+          </div>
+        </td>
       </tr>`;
-  }).join("");
-
-  $("#recordMobileList").innerHTML = rows.map((record) => {
-    const roi = ratio(record.revenue, record.spend);
-    return `
-      <article class="mobile-record-card">
-        <div class="mobile-record-head">
-          <div class="mobile-record-identity">
-            <span class="mobile-record-date">${formatDate(record.date)}</span>
-            <strong>${escapeHtml(record.douyinName || "未命名达人")}</strong>
-            <small>抖音号 ${escapeHtml(record.douyinNumber || "—")}</small>
-          </div>
-          <div class="mobile-record-total">
-            <span>整体消耗</span>
-            <strong>${money(record.spend, 2)}</strong>
-          </div>
-        </div>
-        <div class="mobile-record-performance">
-          <div><span>整体成交金额</span><strong>${money(record.revenue, 2)}</strong></div>
-          <div><span>整体 ROI</span><strong class="roi-value">${roi.toFixed(2)}</strong></div>
-        </div>
-      </article>`;
   }).join("");
   $("#recordEmptyState").classList.toggle("hidden", rows.length > 0);
   $("#recordTableBody").closest(".table-scroll").classList.toggle("hidden", rows.length === 0);
-  $("#recordTableBody").closest(".table-panel").classList.toggle("hidden", rows.length === 0);
 }
 
 function renderBackup() {
@@ -1084,14 +1018,11 @@ function renderBackup() {
 
 function switchView(viewName) {
   const meta = VIEW_META[viewName] || VIEW_META.dashboard;
-  $(".content-wrap").classList.toggle("records-wide", viewName === "records" || viewName === "dashboard");
   $$(".nav-item").forEach((item) => item.classList.toggle("active", item.dataset.view === viewName));
   $$(".view").forEach((view) => view.classList.remove("active"));
   $(`#${viewName}View`).classList.add("active");
   $("#viewEyebrow").textContent = meta[0];
   $("#viewTitle").textContent = meta[1];
-  $("#exportReportExcelButton").classList.toggle("hidden", viewName !== "dashboard");
-  $("#quickRecordButton").classList.toggle("hidden", viewName === "dashboard");
   $("#sidebar").classList.remove("open");
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
@@ -1141,7 +1072,7 @@ function openPaymentModal(payment = null) {
   $("#paymentId").value = payment?.id || "";
   $("#paymentModalTitle").textContent = payment ? "编辑付款记录" : "上传付款截图";
   $("#paymentUploadTitle").textContent = payment ? "重新上传截图识别" : "选择付款截图";
-  $("#paymentImageName").textContent = payment?.imagePath ? "已附凭证图片，重新上传可替换" : "支持支付宝、微信和银行回单图片";
+  $("#paymentImageName").textContent = "支持支付宝、微信和银行回单图片";
   $("#paymentOcrStatus").classList.add("hidden");
   $("#paymentOcrProgress").style.width = "0%";
   $("#paymentDate").value = payment?.date || localDate();
@@ -1152,6 +1083,7 @@ function openPaymentModal(payment = null) {
   $("#paymentPayee").value = payment?.payee || "";
   $("#paymentPayeeBank").value = payment?.payeeBank || "";
   $("#paymentPayeeAccount").value = payment?.payeeAccount || "";
+  $("#zhipuApiKey").value = getZhipuApiKey();
   showModal("paymentModal");
 }
 
@@ -1164,7 +1096,7 @@ function openRecordModal(record = null, campaignId = null) {
   $("#recordForm").reset();
   $("#recordId").value = record?.id || "";
   $("#recordModalTitle").textContent = record ? "编辑投流数据" : "录入投流数据";
-  $("#recordDate").value = record?.date || localDate();
+  $("#recordDate").value = record?.date || $("#dashboardDate").value || localDate();
   $("#recordCampaign").value = record?.campaignId || campaignId || state.campaigns.find((item) => item.status === "投放中")?.id || state.campaigns[0].id;
   $("#recordSpend").value = record?.spend ?? "";
   $("#recordImpressions").value = record?.impressions ?? "";
@@ -1185,11 +1117,6 @@ function showModal(id) {
 
 function closeModal(id) {
   $(`#${id}`).classList.add("hidden");
-  if (id === "receiptImageModal" && receiptImageObjectUrl) {
-    URL.revokeObjectURL(receiptImageObjectUrl);
-    receiptImageObjectUrl = "";
-    $("#receiptImage").removeAttribute("src");
-  }
   if (!$$(".modal-backdrop:not(.hidden), .confirm-backdrop:not(.hidden)").length) document.body.style.overflow = "";
 }
 
@@ -1262,7 +1189,6 @@ async function handlePaymentSubmit(event) {
   const id = $("#paymentId").value;
   const existing = state.recharges.find((item) => item.id === id);
   const item = {
-    ...(existing || {}),
     id: id || uid("pay"),
     date: $("#paymentDate").value,
     amount: Number($("#paymentAmount").value),
@@ -1274,8 +1200,6 @@ async function handlePaymentSubmit(event) {
     payeeAccount: $("#paymentPayeeAccount").value.trim(),
     recordType: "payment",
     status: "已付款",
-    amountCurrency: "CNY",
-    imagePath: paymentOcrResult?.imagePath || existing?.imagePath || "",
     source: paymentOcrResult ? "glm-4v" : (existing?.source || "manual"),
     ocrConfidence: paymentOcrResult?.confidence || existing?.ocrConfidence || 0,
     createdAt: existing?.createdAt || new Date().toISOString(),
@@ -1415,55 +1339,21 @@ function csvEscape(value) {
   return /[",\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
 }
 
-function exportConsumptionExcel() {
-  const rows = aggregatedConsumptionRecords(filteredRecords());
-  TrafficExcel.downloadWorkbook(`消耗数据-${localDate()}.xlsx`, [{
-    name: "消耗数据",
-    rows: [
-      ["日期", "抖音号", "达人昵称", "整体消耗", "整体成交金额", "整体ROI"],
-      ...rows.map((record) => [
-        record.date, record.douyinNumber || "", record.douyinName || "", Number(record.spend || 0),
-        Number(record.revenue || 0), Number(ratio(record.revenue, record.spend).toFixed(4))
-      ])
-    ]
-  }]);
+function exportCsv() {
+  const rows = filteredRecords();
+  const header = ["日期", "计划名称", "平台", "广告账户", "消耗", "展现", "点击", "线索", "订单", "成交金额", "ROI", "CPC", "CPA", "备注"];
+  const dataRows = rows.map((record) => {
+    const campaign = campaignById(record.campaignId) || {};
+    return [
+      record.date, campaign.name || "已删除的计划", campaign.platform || "", campaign.account || "", record.spend,
+      record.impressions, record.clicks, record.leads, record.orders, record.revenue,
+      ratio(record.revenue, record.spend).toFixed(2), ratio(record.spend, record.clicks).toFixed(2),
+      ratio(record.spend, record.orders).toFixed(2), record.notes || "",
+    ].map(csvEscape).join(",");
+  });
+  const csv = `\ufeff${header.join(",")}\n${dataRows.join("\n")}`;
+  downloadFile(`投流每日数据-${localDate()}.csv`, csv, "text/csv;charset=utf-8");
   toast(`已导出 ${rows.length} 条数据`);
-}
-
-function exportReportExcel() {
-  const consumption = reportConsumptionRows(filteredReportRecords());
-  const finance = filteredFinanceRecords();
-  const comparison = reportComparisonRows(filteredReportRecords(), finance);
-  const metricValues = (metrics) => [
-    Number(metrics.sourceRoi || 0), Number(metrics.netRevenue || 0), Number(metrics.netOrders || 0),
-    Number(metrics.paidNetRevenue || 0), Number(metrics.oneHourRefundRate || 0), Number(metrics.netSettlementRate || 0),
-    Number(metrics.revenue || 0), Number(metrics.comprehensiveCost || 0), Number(metrics.spend || 0),
-    Number(metrics.orderCost || 0), Number(metrics.creatorCommission || 0)
-  ];
-  TrafficExcel.downloadWorkbook(`千川报表-${localDate()}.xlsx`, [
-    {
-      name: "消耗数据",
-      rows: [
-        ["日期", "千川账户", "账户ID", "数据类型", "抖音号", "达人昵称", "综合营销ROI", "净成交金额", "净成交订单数", "用户实际支付净成交金额", "1小时内退款率", "净成交金额结算率", "整体成交金额", "综合成本", "整体消耗", "综合订单成本", "预估达人佣金"],
-        ...consumption.map((row) => [row.date, row.account, row.advertiserId, row.sourceLabel, row.douyinNumber, row.douyinName, ...metricValues(row.metrics)])
-      ]
-    },
-    {
-      name: "财务数据",
-      rows: [
-        ["日期", "千川账户", "账户ID", "余额总消耗", "非赠款消耗", "赠款消耗"],
-        ...finance.map((row) => [row.date, row.advertiserName || campaignById(row.campaignId)?.name || "", row.advertiserId || "", Number(row.balanceTotalSpend || 0), Number(row.nonGrantSpend || 0), Number(row.giftSpend || 0)])
-      ]
-    },
-    {
-      name: "数据比对",
-      rows: [
-        ["日期", "千川账户", "账户ID", "投流整体消耗", "财务余额总消耗", "差额", "比对结果"],
-        ...comparison.map((row) => [row.date, row.account, row.advertiserId, Number(row.consumptionSpend.toFixed(2)), Number(row.financeSpend.toFixed(2)), row.difference, row.matched ? "一致" : "有差额"])
-      ]
-    }
-  ]);
-  toast(`已导出消耗 ${consumption.length} 条、财务 ${finance.length} 条`);
 }
 
 function exportRechargeCsv() {
@@ -1507,6 +1397,7 @@ function bindEvents() {
   $$(".nav-item").forEach((button) => button.addEventListener("click", () => switchView(button.dataset.view)));
   $$('[data-jump-view]').forEach((button) => button.addEventListener("click", () => switchView(button.dataset.jumpView)));
   $("#menuButton").addEventListener("click", () => $("#sidebar").classList.toggle("open"));
+  $("#dashboardDate").addEventListener("change", renderDashboard);
   $("#quickRecordButton").addEventListener("click", () => openRecordModal());
   $("#addRechargeButton").addEventListener("click", () => activeRechargeLedger === "payment" ? openPaymentModal() : openRechargeModal());
   $("#addRecordButton").addEventListener("click", () => openRecordModal());
@@ -1526,6 +1417,7 @@ function bindEvents() {
     event.target.setCustomValidity("");
   });
   $("#paymentUploadButton").addEventListener("click", () => $("#paymentImageInput").click());
+  $("#zhipuApiKey").addEventListener("input", (event) => saveZhipuApiKey(event.target.value));
   $("#paymentImageInput").addEventListener("change", (event) => {
     const [file] = event.target.files;
     if (file) recognizePaymentImage(file);
@@ -1543,34 +1435,16 @@ function bindEvents() {
     if (file) recognizePaymentImage(file);
   });
   ["#recordSearch", "#recordStartDate", "#recordEndDate", "#recordPlatformFilter"].forEach((selector) => $(selector).addEventListener("input", renderRecords));
-  ["#reportSearch", "#reportStartDate", "#reportEndDate"].forEach((selector) => $(selector).addEventListener("input", renderDashboard));
-  $$("[data-report-page]").forEach((button) => button.addEventListener("click", () => {
-    activeReportPage = button.dataset.reportPage;
-    renderDashboard();
-  }));
 
   $("#rechargeTableBody").addEventListener("click", (event) => {
     const button = event.target.closest("[data-action]");
     if (!button) return;
     const recharge = state.recharges.find((item) => item.id === button.dataset.id);
     if (button.dataset.action === "edit-ledger") recharge?.recordType === "payment" ? openPaymentModal(recharge) : openRechargeModal(recharge);
-    if (button.dataset.action === "attach-payment-image" && recharge) {
-      openPaymentModal(recharge);
-      setTimeout(() => $("#paymentUploadButton").focus(), 60);
-    }
-    if (button.dataset.action === "view-payment-image") showPaymentReceiptImage(recharge?.imagePath);
     if (button.dataset.action === "delete-ledger") deleteRecharge(button.dataset.id);
   });
 
   $("#recordTableBody").addEventListener("click", (event) => {
-    const button = event.target.closest("[data-action]");
-    if (!button) return;
-    const record = state.records.find((item) => item.id === button.dataset.id);
-    if (button.dataset.action === "edit-record") openRecordModal(record);
-    if (button.dataset.action === "delete-record") deleteRecord(button.dataset.id);
-  });
-
-  $("#recordMobileList").addEventListener("click", (event) => {
     const button = event.target.closest("[data-action]");
     if (!button) return;
     const record = state.records.find((item) => item.id === button.dataset.id);
@@ -1592,8 +1466,7 @@ function bindEvents() {
   $("#confirmCancel").addEventListener("click", () => resolveConfirm(false));
   $("#confirmAccept").addEventListener("click", () => resolveConfirm(true));
   $("#exportJsonButton").addEventListener("click", exportJson);
-  $("#exportCsvButton").addEventListener("click", exportConsumptionExcel);
-  $("#exportReportExcelButton").addEventListener("click", exportReportExcel);
+  $("#exportCsvButton").addEventListener("click", exportCsv);
   $("#importJsonInput").addEventListener("change", (event) => importJson(event.target.files[0]));
   $("#resetDemoButton").addEventListener("click", async () => {
     const confirmed = await askConfirm("恢复演示数据？", "云端数据将被演示计划和最近 7 天示例记录覆盖。", "恢复演示数据");
@@ -1618,12 +1491,10 @@ function bindEvents() {
 }
 
 function initialize() {
-  $("#reportStartDate").value = localDate(-2);
-  $("#reportEndDate").value = localDate();
+  $("#dashboardDate").value = localDate();
   $("#recordStartDate").value = localDate(-6);
   $("#recordEndDate").value = localDate();
   bindEvents();
-  $("#quickRecordButton").classList.add("hidden");
   renderAll();
   cloudInitializationPromise = initializeCloud();
 }
