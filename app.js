@@ -1,7 +1,7 @@
 "use strict";
 
 const STORAGE_KEY = "traffic_manager_data_v1";
-const APP_VERSION = "1.8.1";
+const APP_VERSION = "1.9.0";
 const CLOUD_ROW_ID = 2;
 const RECHARGE_WORKFLOW_VERSION = "2026-08-29-v1";
 const REQUIRED_ACCOUNT_NAMES = ["杭州夕雾", "MELBOURNE", "江西井意", "浏阳市关口韵帆", "ISAMORVAN", "研汁工社"];
@@ -32,6 +32,7 @@ let cloudInitializationPromise = null;
 let lastCloudSnapshot = "";
 let lastCloudRefreshAt = 0;
 let activeRechargeLedger = "recharge";
+let activeReportPage = "consumption";
 let paymentOcrResult = null;
 let receiptImageObjectUrl = "";
 
@@ -148,6 +149,7 @@ function createDemoState() {
     campaigns,
     recharges,
     records,
+    financeRecords: [],
     settings: { initializedAt: new Date().toISOString() },
   };
 }
@@ -159,6 +161,7 @@ function emptyState() {
     campaigns: [],
     recharges: [],
     records: [],
+    financeRecords: [],
     settings: { initializedAt: new Date().toISOString() },
   };
 }
@@ -173,6 +176,7 @@ function normalizeState(candidate) {
     campaigns: candidate.campaigns.map((item) => ({ ...item })),
     recharges: Array.isArray(candidate.recharges) ? candidate.recharges.map((item) => ({ ...item })) : [],
     records: candidate.records.map((item) => ({ ...item })),
+    financeRecords: Array.isArray(candidate.financeRecords) ? candidate.financeRecords.map((item) => ({ ...item })) : [],
     settings: candidate.settings && typeof candidate.settings === "object" ? candidate.settings : {},
   };
 }
@@ -522,67 +526,137 @@ function renderSelectOptions() {
 }
 
 function renderDashboard() {
-  const date = $("#dashboardDate").value || localDate();
-  const todayRecords = recordsForDate(date);
-  const previousRecords = recordsForDate(offsetDate(date, -1));
-  const todayRecharges = state.recharges.filter((item) => item.date === date);
-  const previousRecharges = state.recharges.filter((item) => item.date === offsetDate(date, -1));
-  const cumulativeRecharges = state.recharges.filter((item) => item.date <= date && isFundedRecharge(item));
-  const cumulativeRecords = state.records.filter((item) => item.date <= date);
-  const recharge = sum(todayRecharges.filter(isFundedRecharge), "amount");
-  const previousRecharge = sum(previousRecharges.filter(isFundedRecharge), "amount");
-  const spend = sum(todayRecords, "spend");
-  const revenue = sum(todayRecords, "revenue");
-  const orders = sum(todayRecords, "orders");
-  const balance = sum(cumulativeRecharges, "amount") - sum(cumulativeRecords, "spend");
-  const roi = ratio(revenue, spend);
-  const previousSpend = sum(previousRecords, "spend");
-  const previousRevenue = sum(previousRecords, "revenue");
-  const previousRoi = ratio(previousRevenue, previousSpend);
+  const consumptionRecords = filteredReportRecords();
+  const detailRows = reportConsumptionRows(consumptionRecords);
+  const financeRows = filteredFinanceRecords();
+  const comparisonRows = reportComparisonRows(consumptionRecords, financeRows);
+  const spend = detailRows.reduce((total, row) => total + Number(row.metrics.spend || 0), 0);
+  const revenue = detailRows.reduce((total, row) => total + Number(row.metrics.revenue || 0), 0);
+  $("#reportConsumptionSummary").innerHTML = summaryChips([
+    ["明细数", `${detailRows.length} 条`], ["整体消耗", money(spend)],
+    ["整体成交金额", money(revenue)], ["整体 ROI", ratio(revenue, spend).toFixed(2)]
+  ]);
+  $("#reportConsumptionBody").innerHTML = detailRows.map((row) => `
+    <tr><td>${formatDate(row.date)}</td><td>${escapeHtml(row.account)}</td><td>${escapeHtml(row.sourceLabel)}</td>
+      <td class="account-id-cell">${escapeHtml(row.douyinNumber || "—")}</td><td>${escapeHtml(row.douyinName || "—")}</td>
+      ${reportMetricCells(row.metrics)}</tr>`).join("");
 
-  const cards = [
-    {
-      label: "当日充值金额",
-      icon: "+",
-      value: money(recharge),
-      note: trendNote(recharge, previousRecharge, "较前一日"),
-    },
-    {
-      label: "当日消耗",
-      icon: "↗",
-      value: money(spend),
-      note: trendNote(spend, previousSpend, "较前一日"),
-    },
-    {
-      label: "账户总余额",
-      icon: "¥",
-      value: money(balance),
-      note: `<span>累计充值减累计消耗</span>`,
-    },
-    {
-      label: "当日整体 ROI",
-      icon: "◎",
-      value: roi.toFixed(2),
-      note: previousRoi ? trendNote(roi, previousRoi, "较前一日") : `<span>${orders} 单 · 成交 ${money(revenue)}</span>`,
-    },
-  ];
+  const balanceSpend = sum(financeRows, "balanceTotalSpend");
+  $("#reportFinanceSummary").innerHTML = summaryChips([
+    ["财务日结", `${financeRows.length} 条`], ["余额总消耗", money(balanceSpend)],
+    ["非赠款消耗", money(sum(financeRows, "nonGrantSpend"))], ["赠款消耗", money(sum(financeRows, "giftSpend"))]
+  ]);
+  $("#reportFinanceBody").innerHTML = financeRows.map((row) => `
+    <tr><td>${formatDate(row.date)}</td><td>${escapeHtml(row.advertiserName || campaignById(row.campaignId)?.name || "—")}</td>
+      <td class="account-id-cell">${escapeHtml(row.advertiserId || "—")}</td>
+      <td class="number-cell">${money(row.balanceTotalSpend, 2)}</td><td class="number-cell">${money(row.nonGrantSpend, 2)}</td>
+      <td class="number-cell">${money(row.giftSpend, 2)}</td></tr>`).join("");
 
-  $("#kpiGrid").innerHTML = cards.map((card) => `
-    <article class="kpi-card">
-      <div class="kpi-label"><span>${card.label}</span><span class="kpi-icon">${card.icon}</span></div>
-      <div class="kpi-value">${card.value}</div>
-      <div class="kpi-footnote">${card.note}</div>
-    </article>
-  `).join("");
+  const matched = comparisonRows.filter((row) => row.matched).length;
+  $("#reportComparisonSummary").innerHTML = summaryChips([
+    ["比对账户日", `${comparisonRows.length} 条`], ["一致", `${matched} 条`],
+    ["有差额", `${comparisonRows.length - matched} 条`],
+    ["差额合计", money(comparisonRows.reduce((total, row) => total + row.difference, 0))]
+  ]);
+  $("#reportComparisonBody").innerHTML = comparisonRows.map((row) => `
+    <tr><td>${formatDate(row.date)}</td><td>${escapeHtml(row.account)}</td><td class="account-id-cell">${escapeHtml(row.advertiserId || "—")}</td>
+      <td class="number-cell">${money(row.consumptionSpend, 2)}</td><td class="number-cell">${money(row.financeSpend, 2)}</td>
+      <td class="number-cell"><strong>${money(row.difference, 2)}</strong></td>
+      <td><span class="status-badge ${row.matched ? "" : "ended"}">${row.matched ? "一致" : "有差额"}</span></td></tr>`).join("");
 
-  $("#dashboardSummary").textContent = todayRecords.length || todayRecharges.length
-    ? `${formatDate(date)}：充值 ${todayRecharges.length} 笔、消耗 ${todayRecords.length} 条，账户总余额 ${money(balance)}。`
-    : `${formatDate(date)} 暂无充值和消耗数据，可前往对应业务端开始录入。`;
-  $("#dataModeBadge").textContent = cloudReady ? (state.demo ? "云端演示数据" : "云端数据") : "本地缓存";
+  $$("[data-report-page]").forEach((button) => button.classList.toggle("active", button.dataset.reportPage === activeReportPage));
+  $("#reportConsumptionPage").classList.toggle("hidden", activeReportPage !== "consumption");
+  $("#reportFinancePage").classList.toggle("hidden", activeReportPage !== "finance");
+  $("#reportComparisonPage").classList.toggle("hidden", activeReportPage !== "comparison");
+}
 
-  renderTrend(date);
-  renderAlerts(todayRecords, date);
-  renderRanking(todayRecords, date);
+const REPORT_SOURCES = Object.freeze([
+  ["chengfangLive", "乘方直播"], ["chengfangProduct", "乘方商品"],
+  ["globalLive", "全域直播"], ["globalProduct", "全域商品"]
+]);
+
+function reportRangeMatches(item) {
+  const start = $("#reportStartDate")?.value || "";
+  const end = $("#reportEndDate")?.value || "";
+  return (!start || item.date >= start) && (!end || item.date <= end);
+}
+
+function reportQueryMatches(values) {
+  const query = $("#reportSearch")?.value.trim().toLowerCase() || "";
+  return !query || values.join(" ").toLowerCase().includes(query);
+}
+
+function filteredReportRecords() {
+  return state.records.filter((record) => {
+    const campaign = campaignById(record.campaignId);
+    return reportRangeMatches(record) && reportQueryMatches([
+      campaign?.name || "", campaign?.account || "", record.douyinName || "", record.douyinNumber || ""
+    ]);
+  });
+}
+
+function filteredFinanceRecords() {
+  return (state.financeRecords || []).filter((record) => reportRangeMatches(record)
+    && reportQueryMatches([record.advertiserName || "", record.advertiserId || "", campaignById(record.campaignId)?.name || ""]))
+    .sort((left, right) => right.date.localeCompare(left.date) || String(left.advertiserName).localeCompare(String(right.advertiserName)));
+}
+
+function reportSourcePresent(metrics) {
+  if (!metrics) return false;
+  if (metrics.present === true) return true;
+  return Object.entries(metrics).some(([key, value]) => key !== "present" && Number(value || 0) !== 0);
+}
+
+function reportConsumptionRows(records) {
+  return records.flatMap((record) => {
+    const campaign = campaignById(record.campaignId);
+    return REPORT_SOURCES.map(([source, sourceLabel]) => ({
+      date: record.date,
+      account: campaign?.name || campaign?.account || record.advertiserId || "—",
+      advertiserId: record.advertiserId || campaign?.advertiserId || "",
+      douyinNumber: record.douyinNumber || "",
+      douyinName: record.douyinName || "",
+      source,
+      sourceLabel,
+      metrics: record.performanceBreakdown?.[source]
+    })).filter((row) => reportSourcePresent(row.metrics));
+  }).sort((left, right) => right.date.localeCompare(left.date) || left.account.localeCompare(right.account));
+}
+
+function reportMetricCells(metrics) {
+  const percent = (value) => value == null ? "—" : `${Number(value).toFixed(2)}%`;
+  const amount = (value) => value == null ? "—" : money(value, 2);
+  return [
+    Number(metrics.sourceRoi || 0).toFixed(2), amount(metrics.netRevenue), number(metrics.netOrders || 0),
+    amount(metrics.paidNetRevenue), percent(metrics.oneHourRefundRate), percent(metrics.netSettlementRate),
+    amount(metrics.revenue), amount(metrics.comprehensiveCost), amount(metrics.spend), amount(metrics.orderCost),
+    amount(metrics.creatorCommission)
+  ].map((value) => `<td class="number-cell">${value}</td>`).join("");
+}
+
+function reportComparisonRows(consumptionRecords, financeRows) {
+  const rows = new Map();
+  const bucket = (date, advertiserId, account) => {
+    const key = `${date}|${advertiserId || account}`;
+    if (!rows.has(key)) rows.set(key, { date, advertiserId, account, consumptionSpend: 0, financeSpend: 0 });
+    return rows.get(key);
+  };
+  for (const record of consumptionRecords) {
+    const campaign = campaignById(record.campaignId);
+    const advertiserId = record.advertiserId || campaign?.advertiserId || "";
+    bucket(record.date, advertiserId, campaign?.name || campaign?.account || advertiserId || "—").consumptionSpend += Number(record.spend || 0);
+  }
+  for (const record of financeRows) {
+    bucket(record.date, record.advertiserId || "", record.advertiserName || campaignById(record.campaignId)?.name || "—").financeSpend += Number(record.balanceTotalSpend || 0);
+  }
+  return [...rows.values()].map((row) => {
+    const difference = Math.round((row.consumptionSpend - row.financeSpend) * 100) / 100;
+    return { ...row, difference, matched: Math.abs(difference) <= 0.01 };
+  }).sort((left, right) => right.date.localeCompare(left.date) || left.account.localeCompare(right.account));
+}
+
+function summaryChips(items) {
+  return items.map(([label, value]) => `<div class="summary-chip"><span>${label}</span><strong>${value}</strong></div>`).join("");
 }
 
 function trendNote(current, previous, label) {
@@ -928,90 +1002,68 @@ function filteredRecords() {
   }).sort((a, b) => b.date.localeCompare(a.date) || String(b.createdAt).localeCompare(String(a.createdAt)));
 }
 
+function aggregatedConsumptionRecords(records) {
+  const grouped = new Map();
+  for (const record of records) {
+    const key = `${record.date}|${record.douyinNumber || record.douyinName || record.id}`;
+    if (!grouped.has(key)) grouped.set(key, {
+      date: record.date,
+      douyinNumber: record.douyinNumber || "",
+      douyinName: record.douyinName || "",
+      spend: 0,
+      revenue: 0
+    });
+    const row = grouped.get(key);
+    row.spend += Number(record.spend || 0);
+    row.revenue += Number(record.revenue || 0);
+    if (!row.douyinName && record.douyinName) row.douyinName = record.douyinName;
+  }
+  return [...grouped.values()].sort((left, right) => right.date.localeCompare(left.date)
+    || String(left.douyinNumber).localeCompare(String(right.douyinNumber)));
+}
+
 function renderRecords() {
-  const rows = filteredRecords();
+  const rows = aggregatedConsumptionRecords(filteredRecords());
   const spend = sum(rows, "spend");
-  const chengfangSpend = rows.reduce((total, record) => total + Number(record.spendBreakdown?.chengfang || 0), 0);
-  const globalSpend = rows.reduce((total, record) => total + Number(record.spendBreakdown?.global || 0), 0);
   const revenue = sum(rows, "revenue");
-  const orders = sum(rows, "orders");
   const summary = [
-    ["乘方消耗", money(chengfangSpend)],
-    ["全域消耗", money(globalSpend)],
-    ["合计消耗", money(spend)],
-    ["筛选范围成交", money(revenue)],
-    ["订单数", number(orders)],
+    ["整体消耗", money(spend)],
+    ["整体成交金额", money(revenue)],
     ["整体 ROI", ratio(revenue, spend).toFixed(2)],
   ];
   $("#recordSummary").innerHTML = summary.map(([label, value]) => `<div class="summary-chip"><span>${label}</span><strong>${value}</strong></div>`).join("");
 
   $("#recordTableBody").innerHTML = rows.map((record) => {
-    const campaign = campaignById(record.campaignId);
-    const breakdown = record.spendBreakdown || {};
     const roi = ratio(record.revenue, record.spend);
     return `
       <tr>
         <td>${formatDate(record.date)}</td>
-        <td>${campaign ? campaignNameCell(campaign, record.notes || campaign.account) : `<span>已删除的计划</span>`}</td>
-        <td>${escapeHtml(record.douyinName || "—")}</td>
         <td class="account-id-cell">${escapeHtml(record.douyinNumber || "—")}</td>
-        <td class="number-cell">${breakdown.chengfangLive == null ? "—" : money(breakdown.chengfangLive, 2)}</td>
-        <td class="number-cell">${breakdown.chengfangProduct == null ? "—" : money(breakdown.chengfangProduct, 2)}</td>
-        <td class="number-cell">${breakdown.globalLive == null ? "—" : money(breakdown.globalLive, 2)}</td>
-        <td class="number-cell">${breakdown.globalProduct == null ? "—" : money(breakdown.globalProduct, 2)}</td>
+        <td>${escapeHtml(record.douyinName || "—")}</td>
         <td class="number-cell"><strong>${money(record.spend, 2)}</strong></td>
         <td class="number-cell">${money(record.revenue, 2)}</td>
-        <td class="number-cell">${number(record.orders)}</td>
-        <td class="number-cell"><span class="roi-value ${campaign && roi >= campaign.targetRoi ? "roi-good" : "roi-warn"}">${roi.toFixed(2)}</span></td>
-        <td class="action-cell">
-          <div class="table-actions">
-            <button class="small-action" data-action="edit-record" data-id="${escapeHtml(record.id)}">编辑</button>
-            <button class="small-action delete" data-action="delete-record" data-id="${escapeHtml(record.id)}">删除</button>
-          </div>
-        </td>
+        <td class="number-cell"><span class="roi-value">${roi.toFixed(2)}</span></td>
       </tr>`;
   }).join("");
 
   $("#recordMobileList").innerHTML = rows.map((record) => {
-    const campaign = campaignById(record.campaignId);
-    const breakdown = record.spendBreakdown || {};
     const roi = ratio(record.revenue, record.spend);
-    const spendItem = (label, value) => `
-      <div class="mobile-spend-item">
-        <span>${label}</span>
-        <strong>${value == null ? "—" : money(value, 2)}</strong>
-      </div>`;
     return `
       <article class="mobile-record-card">
         <div class="mobile-record-head">
           <div class="mobile-record-identity">
             <span class="mobile-record-date">${formatDate(record.date)}</span>
-            <strong>${escapeHtml(record.douyinName || campaign?.name || "未命名账户")}</strong>
+            <strong>${escapeHtml(record.douyinName || "未命名达人")}</strong>
             <small>抖音号 ${escapeHtml(record.douyinNumber || "—")}</small>
           </div>
           <div class="mobile-record-total">
-            <span>合计消耗</span>
+            <span>整体消耗</span>
             <strong>${money(record.spend, 2)}</strong>
           </div>
         </div>
-        <div class="mobile-record-account">
-          <span>${escapeHtml(campaign?.name || "已删除的计划")}</span>
-          <small>${escapeHtml(campaign?.account || record.notes || "—")}</small>
-        </div>
-        <div class="mobile-spend-grid">
-          ${spendItem("乘方直播", breakdown.chengfangLive)}
-          ${spendItem("乘方商品", breakdown.chengfangProduct)}
-          ${spendItem("全域直播", breakdown.globalLive)}
-          ${spendItem("全域商品", breakdown.globalProduct)}
-        </div>
         <div class="mobile-record-performance">
-          <div><span>成交</span><strong>${money(record.revenue, 2)}</strong></div>
-          <div><span>订单</span><strong>${number(record.orders)}</strong></div>
-          <div><span>ROI</span><strong class="roi-value ${campaign && roi >= campaign.targetRoi ? "roi-good" : "roi-warn"}">${roi.toFixed(2)}</strong></div>
-        </div>
-        <div class="mobile-record-actions">
-          <button class="small-action" data-action="edit-record" data-id="${escapeHtml(record.id)}">编辑</button>
-          <button class="small-action delete" data-action="delete-record" data-id="${escapeHtml(record.id)}">删除</button>
+          <div><span>整体成交金额</span><strong>${money(record.revenue, 2)}</strong></div>
+          <div><span>整体 ROI</span><strong class="roi-value">${roi.toFixed(2)}</strong></div>
         </div>
       </article>`;
   }).join("");
@@ -1032,12 +1084,14 @@ function renderBackup() {
 
 function switchView(viewName) {
   const meta = VIEW_META[viewName] || VIEW_META.dashboard;
-  $(".content-wrap").classList.toggle("records-wide", viewName === "records");
+  $(".content-wrap").classList.toggle("records-wide", viewName === "records" || viewName === "dashboard");
   $$(".nav-item").forEach((item) => item.classList.toggle("active", item.dataset.view === viewName));
   $$(".view").forEach((view) => view.classList.remove("active"));
   $(`#${viewName}View`).classList.add("active");
   $("#viewEyebrow").textContent = meta[0];
   $("#viewTitle").textContent = meta[1];
+  $("#exportReportExcelButton").classList.toggle("hidden", viewName !== "dashboard");
+  $("#quickRecordButton").classList.toggle("hidden", viewName === "dashboard");
   $("#sidebar").classList.remove("open");
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
@@ -1110,7 +1164,7 @@ function openRecordModal(record = null, campaignId = null) {
   $("#recordForm").reset();
   $("#recordId").value = record?.id || "";
   $("#recordModalTitle").textContent = record ? "编辑投流数据" : "录入投流数据";
-  $("#recordDate").value = record?.date || $("#dashboardDate").value || localDate();
+  $("#recordDate").value = record?.date || localDate();
   $("#recordCampaign").value = record?.campaignId || campaignId || state.campaigns.find((item) => item.status === "投放中")?.id || state.campaigns[0].id;
   $("#recordSpend").value = record?.spend ?? "";
   $("#recordImpressions").value = record?.impressions ?? "";
@@ -1361,22 +1415,55 @@ function csvEscape(value) {
   return /[",\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
 }
 
-function exportCsv() {
-  const rows = filteredRecords();
-  const header = ["日期", "计划名称", "平台", "广告账户", "抖音名称", "抖音号", "乘方直播", "乘方商品", "全域直播", "全域商品", "合计消耗", "订单", "成交金额", "ROI", "备注"];
-  const dataRows = rows.map((record) => {
-    const campaign = campaignById(record.campaignId) || {};
-    return [
-      record.date, campaign.name || "已删除的计划", campaign.platform || "", campaign.account || "",
-      record.douyinName || "", record.douyinNumber || "",
-      record.spendBreakdown?.chengfangLive ?? "", record.spendBreakdown?.chengfangProduct ?? "",
-      record.spendBreakdown?.globalLive ?? "", record.spendBreakdown?.globalProduct ?? "", record.spend,
-      record.orders, record.revenue, ratio(record.revenue, record.spend).toFixed(2), record.notes || "",
-    ].map(csvEscape).join(",");
-  });
-  const csv = `\ufeff${header.join(",")}\n${dataRows.join("\n")}`;
-  downloadFile(`投流每日数据-${localDate()}.csv`, csv, "text/csv;charset=utf-8");
+function exportConsumptionExcel() {
+  const rows = aggregatedConsumptionRecords(filteredRecords());
+  TrafficExcel.downloadWorkbook(`消耗数据-${localDate()}.xlsx`, [{
+    name: "消耗数据",
+    rows: [
+      ["日期", "抖音号", "达人昵称", "整体消耗", "整体成交金额", "整体ROI"],
+      ...rows.map((record) => [
+        record.date, record.douyinNumber || "", record.douyinName || "", Number(record.spend || 0),
+        Number(record.revenue || 0), Number(ratio(record.revenue, record.spend).toFixed(4))
+      ])
+    ]
+  }]);
   toast(`已导出 ${rows.length} 条数据`);
+}
+
+function exportReportExcel() {
+  const consumption = reportConsumptionRows(filteredReportRecords());
+  const finance = filteredFinanceRecords();
+  const comparison = reportComparisonRows(filteredReportRecords(), finance);
+  const metricValues = (metrics) => [
+    Number(metrics.sourceRoi || 0), Number(metrics.netRevenue || 0), Number(metrics.netOrders || 0),
+    Number(metrics.paidNetRevenue || 0), Number(metrics.oneHourRefundRate || 0), Number(metrics.netSettlementRate || 0),
+    Number(metrics.revenue || 0), Number(metrics.comprehensiveCost || 0), Number(metrics.spend || 0),
+    Number(metrics.orderCost || 0), Number(metrics.creatorCommission || 0)
+  ];
+  TrafficExcel.downloadWorkbook(`千川报表-${localDate()}.xlsx`, [
+    {
+      name: "消耗数据",
+      rows: [
+        ["日期", "千川账户", "账户ID", "数据类型", "抖音号", "达人昵称", "综合营销ROI", "净成交金额", "净成交订单数", "用户实际支付净成交金额", "1小时内退款率", "净成交金额结算率", "整体成交金额", "综合成本", "整体消耗", "综合订单成本", "预估达人佣金"],
+        ...consumption.map((row) => [row.date, row.account, row.advertiserId, row.sourceLabel, row.douyinNumber, row.douyinName, ...metricValues(row.metrics)])
+      ]
+    },
+    {
+      name: "财务数据",
+      rows: [
+        ["日期", "千川账户", "账户ID", "余额总消耗", "非赠款消耗", "赠款消耗"],
+        ...finance.map((row) => [row.date, row.advertiserName || campaignById(row.campaignId)?.name || "", row.advertiserId || "", Number(row.balanceTotalSpend || 0), Number(row.nonGrantSpend || 0), Number(row.giftSpend || 0)])
+      ]
+    },
+    {
+      name: "数据比对",
+      rows: [
+        ["日期", "千川账户", "账户ID", "投流整体消耗", "财务余额总消耗", "差额", "比对结果"],
+        ...comparison.map((row) => [row.date, row.account, row.advertiserId, Number(row.consumptionSpend.toFixed(2)), Number(row.financeSpend.toFixed(2)), row.difference, row.matched ? "一致" : "有差额"])
+      ]
+    }
+  ]);
+  toast(`已导出消耗 ${consumption.length} 条、财务 ${finance.length} 条`);
 }
 
 function exportRechargeCsv() {
@@ -1420,7 +1507,6 @@ function bindEvents() {
   $$(".nav-item").forEach((button) => button.addEventListener("click", () => switchView(button.dataset.view)));
   $$('[data-jump-view]').forEach((button) => button.addEventListener("click", () => switchView(button.dataset.jumpView)));
   $("#menuButton").addEventListener("click", () => $("#sidebar").classList.toggle("open"));
-  $("#dashboardDate").addEventListener("change", renderDashboard);
   $("#quickRecordButton").addEventListener("click", () => openRecordModal());
   $("#addRechargeButton").addEventListener("click", () => activeRechargeLedger === "payment" ? openPaymentModal() : openRechargeModal());
   $("#addRecordButton").addEventListener("click", () => openRecordModal());
@@ -1457,6 +1543,11 @@ function bindEvents() {
     if (file) recognizePaymentImage(file);
   });
   ["#recordSearch", "#recordStartDate", "#recordEndDate", "#recordPlatformFilter"].forEach((selector) => $(selector).addEventListener("input", renderRecords));
+  ["#reportSearch", "#reportStartDate", "#reportEndDate"].forEach((selector) => $(selector).addEventListener("input", renderDashboard));
+  $$("[data-report-page]").forEach((button) => button.addEventListener("click", () => {
+    activeReportPage = button.dataset.reportPage;
+    renderDashboard();
+  }));
 
   $("#rechargeTableBody").addEventListener("click", (event) => {
     const button = event.target.closest("[data-action]");
@@ -1501,7 +1592,8 @@ function bindEvents() {
   $("#confirmCancel").addEventListener("click", () => resolveConfirm(false));
   $("#confirmAccept").addEventListener("click", () => resolveConfirm(true));
   $("#exportJsonButton").addEventListener("click", exportJson);
-  $("#exportCsvButton").addEventListener("click", exportCsv);
+  $("#exportCsvButton").addEventListener("click", exportConsumptionExcel);
+  $("#exportReportExcelButton").addEventListener("click", exportReportExcel);
   $("#importJsonInput").addEventListener("change", (event) => importJson(event.target.files[0]));
   $("#resetDemoButton").addEventListener("click", async () => {
     const confirmed = await askConfirm("恢复演示数据？", "云端数据将被演示计划和最近 7 天示例记录覆盖。", "恢复演示数据");
@@ -1526,10 +1618,12 @@ function bindEvents() {
 }
 
 function initialize() {
-  $("#dashboardDate").value = localDate();
+  $("#reportStartDate").value = localDate(-2);
+  $("#reportEndDate").value = localDate();
   $("#recordStartDate").value = localDate(-6);
   $("#recordEndDate").value = localDate();
   bindEvents();
+  $("#quickRecordButton").classList.add("hidden");
   renderAll();
   cloudInitializationPromise = initializeCloud();
 }
