@@ -927,17 +927,18 @@ function renderRecords() {
 
   $("#recordTableBody").innerHTML = rows.map((record) => {
     const { totalSpend: spend, totalRevenue: revenue, netRevenue: net, roi, netRoi } = recordMetrics(record);
+    // data-label 供手机端把每行折成卡片时显示字段名（PC 端表格不显示）
     return `
       <tr>
-        <td>${formatDate(record.date)}</td>
-        <td>${escapeHtml(record.douyinName || "—")}</td>
-        <td>${escapeHtml(record.douyinNumber || "—")}</td>
-        <td class="number-cell"><span class="roi-value ${roi >= 1 ? "roi-good" : "roi-warn"}">${roi.toFixed(2)}</span></td>
-        <td class="number-cell">${money(spend, 2)}</td>
-        <td class="number-cell">${money(revenue, 2)}</td>
-        <td class="number-cell"><span class="roi-value ${netRoi >= 1 ? "roi-good" : "roi-warn"}">${netRoi.toFixed(2)}</span></td>
-        <td class="number-cell">${money(net, 2)}</td>
-        <td class="action-cell">
+        <td data-label="日期">${formatDate(record.date)}</td>
+        <td data-label="达人昵称" class="cell-main">${escapeHtml(record.douyinName || "—")}</td>
+        <td data-label="抖音号">${escapeHtml(record.douyinNumber || "—")}</td>
+        <td data-label="整体ROI" class="number-cell"><span class="roi-value ${roi >= 1 ? "roi-good" : "roi-warn"}">${roi.toFixed(2)}</span></td>
+        <td data-label="整体消耗" class="number-cell">${money(spend, 2)}</td>
+        <td data-label="整体成交金额" class="number-cell">${money(revenue, 2)}</td>
+        <td data-label="净ROI" class="number-cell"><span class="roi-value ${netRoi >= 1 ? "roi-good" : "roi-warn"}">${netRoi.toFixed(2)}</span></td>
+        <td data-label="净成交金额" class="number-cell">${money(net, 2)}</td>
+        <td data-label="操作" class="action-cell">
           <div class="table-actions">
             <button class="small-action" data-action="edit-record" data-id="${escapeHtml(record.id)}">编辑</button>
             <button class="small-action delete" data-action="delete-record" data-id="${escapeHtml(record.id)}">删除</button>
