@@ -930,14 +930,14 @@ function renderRecords() {
     // data-label 供手机端把每行折成卡片时显示字段名（PC 端表格不显示）
     return `
       <tr>
-        <td data-label="日期">${formatDate(record.date)}</td>
-        <td data-label="达人昵称" class="cell-main">${escapeHtml(record.douyinName || "—")}</td>
-        <td data-label="抖音号">${escapeHtml(record.douyinNumber || "—")}</td>
-        <td data-label="整体ROI" class="number-cell"><span class="roi-value ${roi >= 1 ? "roi-good" : "roi-warn"}">${roi.toFixed(2)}</span></td>
-        <td data-label="整体消耗" class="number-cell">${money(spend, 2)}</td>
-        <td data-label="整体成交金额" class="number-cell">${money(revenue, 2)}</td>
-        <td data-label="净ROI" class="number-cell"><span class="roi-value ${netRoi >= 1 ? "roi-good" : "roi-warn"}">${netRoi.toFixed(2)}</span></td>
-        <td data-label="净成交金额" class="number-cell">${money(net, 2)}</td>
+        <td data-label="日期"><span class="cell-value">${formatDate(record.date)}</span></td>
+        <td data-label="达人昵称" class="cell-main"><span class="cell-value">${escapeHtml(record.douyinName || "—")}</span></td>
+        <td data-label="抖音号"><span class="cell-value">${escapeHtml(record.douyinNumber || "—")}</span></td>
+        <td data-label="整体ROI" class="number-cell"><span class="cell-value"><span class="roi-value ${roi >= 1 ? "roi-good" : "roi-warn"}">${roi.toFixed(2)}</span></span></td>
+        <td data-label="整体消耗" class="number-cell"><span class="cell-value">${money(spend, 2)}</span></td>
+        <td data-label="整体成交金额" class="number-cell"><span class="cell-value">${money(revenue, 2)}</span></td>
+        <td data-label="净ROI" class="number-cell"><span class="cell-value"><span class="roi-value ${netRoi >= 1 ? "roi-good" : "roi-warn"}">${netRoi.toFixed(2)}</span></span></td>
+        <td data-label="净成交金额" class="number-cell"><span class="cell-value">${money(net, 2)}</span></td>
         <td data-label="操作" class="action-cell">
           <div class="table-actions">
             <button class="small-action" data-action="edit-record" data-id="${escapeHtml(record.id)}">编辑</button>
