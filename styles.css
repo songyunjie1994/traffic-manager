@@ -3020,6 +3020,7 @@ tbody tr:hover td {
   }
 
   .records-table td {
+    box-sizing: border-box;
     display: flex;
     align-items: baseline;
     justify-content: space-between;
@@ -3029,6 +3030,12 @@ tbody tr:hover td {
     text-align: left !important;
     white-space: normal;
     word-break: break-word;
+  }
+
+  /* 数值靠右（显式元素，避免裸文本节点被挤到卡片外） */
+  .records-table td .cell-value {
+    margin-left: auto;
+    text-align: right;
   }
 
   .records-table td::before {
