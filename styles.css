@@ -2660,6 +2660,20 @@ tbody tr:hover td {
   margin-bottom: 12px;
 }
 
+/* 合并行标记：同一天同达人的多条记录（不同账户/口径）合并展示时提示条数 */
+.merge-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 8px;
+  margin-right: 8px;
+  color: #5d50dd;
+  background: #eeecff;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
 .records-table {
   table-layout: fixed;
   width: 100%;
