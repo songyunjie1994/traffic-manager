@@ -2872,14 +2872,36 @@ tbody tr:hover td {
 
   .topbar .cloud-sync-status {
     margin-top: 6px;
+    color: #475569;
+    background: #f1f5f9;
+    border-color: #e2e8f0;
+  }
+
+  .topbar .cloud-sync-status[data-state="synced"] {
     color: #0f766e;
     background: #ecfdf5;
     border-color: #a7f3d0;
   }
 
+  .topbar .cloud-sync-status[data-state="offline"] {
+    color: #b91c1c;
+    background: #fef2f2;
+    border-color: #fecaca;
+  }
+
   .topbar .cloud-status-dot {
+    background: #f59e0b;
+    box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.14);
+  }
+
+  .topbar .cloud-sync-status[data-state="synced"] .cloud-status-dot {
     background: #10b981;
     box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.14);
+  }
+
+  .topbar .cloud-sync-status[data-state="offline"] .cloud-status-dot {
+    background: #ef4444;
+    box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.14);
   }
 
   .menu-button {
