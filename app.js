@@ -1331,6 +1331,8 @@ function exportCsv() {
     toast("当前范围没有可导出的数据");
     return;
   }
+  // 云端还没同步完时导出的是浏览器本地缓存，先明确提示，避免拿旧数据对账。
+  if (!cloudReady && !confirm("云端数据还在加载，现在导出的是浏览器本地缓存，可能不是最新数据。仍要导出吗？")) return;
   const summary = groups.reduce((acc, item) => ({
     spend: acc.spend + item.totalSpend,
     revenue: acc.revenue + item.totalRevenue,
