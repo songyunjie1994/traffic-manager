@@ -908,12 +908,43 @@ function recordMetrics(record) {
   return { totalSpend, totalRevenue, netRevenue, roi: Number.isFinite(roi) ? roi : 0, netRoi: Number.isFinite(netRoi) ? netRoi : 0 };
 }
 
+// 消耗端展示口径（2026-09-12）：同一天 + 同达人昵称 + 同抖音号的多条记录
+// （来自不同账户或不同投放口径）合并成一行展示，数值相加、ROI 用合计重算；
+// 整行为 0 的记录（该日期本来就没有数据）不展示。
+function displayRecordGroups(rows) {
+  const groups = new Map();
+  for (const record of rows) {
+    const metrics = recordMetrics(record);
+    if (!metrics.totalSpend && !metrics.totalRevenue && !metrics.netRevenue) continue;
+    const key = [record.date, record.douyinName || "", record.douyinNumber || ""].join("|");
+    const group = groups.get(key) || {
+      key,
+      date: record.date,
+      douyinName: record.douyinName || "",
+      douyinNumber: record.douyinNumber || "",
+      ids: [],
+      totalSpend: 0,
+      totalRevenue: 0,
+      netRevenue: 0,
+    };
+    group.ids.push(record.id);
+    group.totalSpend += metrics.totalSpend;
+    group.totalRevenue += metrics.totalRevenue;
+    group.netRevenue += metrics.netRevenue;
+    groups.set(key, group);
+  }
+  return [...groups.values()].map((group) => ({
+    ...group,
+    roi: group.totalSpend > 0 ? group.totalRevenue / group.totalSpend : 0,
+    netRoi: group.totalSpend > 0 ? group.netRevenue / group.totalSpend : 0,
+  }));
+}
+
 function renderRecords() {
-  const rows = filteredRecords();
-  const metricsList = rows.map((record) => recordMetrics(record));
-  const totalSpend = metricsList.reduce((acc, item) => acc + item.totalSpend, 0);
-  const totalRevenue = metricsList.reduce((acc, item) => acc + item.totalRevenue, 0);
-  const netRevenue = metricsList.reduce((acc, item) => acc + item.netRevenue, 0);
+  const groups = displayRecordGroups(filteredRecords());
+  const totalSpend = groups.reduce((acc, item) => acc + item.totalSpend, 0);
+  const totalRevenue = groups.reduce((acc, item) => acc + item.totalRevenue, 0);
+  const netRevenue = groups.reduce((acc, item) => acc + item.netRevenue, 0);
   const totalRoi = totalSpend > 0 ? totalRevenue / totalSpend : 0;
   const totalNetRoi = totalSpend > 0 ? netRevenue / totalSpend : 0;
   const summary = [
@@ -925,29 +956,32 @@ function renderRecords() {
   ];
   $("#recordSummary").innerHTML = summary.map(([label, value]) => `<div class="summary-chip"><span>${label}</span><strong>${value}</strong></div>`).join("");
 
-  $("#recordTableBody").innerHTML = rows.map((record) => {
-    const { totalSpend: spend, totalRevenue: revenue, netRevenue: net, roi, netRoi } = recordMetrics(record);
+  $("#recordTableBody").innerHTML = groups.map((group) => {
+    const { totalSpend: spend, totalRevenue: revenue, netRevenue: net, roi, netRoi } = group;
+    const merged = group.ids.length > 1;
     // data-label 供手机端把每行折成卡片时显示字段名（PC 端表格不显示）
+    const actions = merged
+      ? `<span class="merge-badge">合并 ${group.ids.length} 条</span>
+         <button class="small-action delete" data-action="delete-record" data-ids="${escapeHtml(group.ids.join(","))}">删除</button>`
+      : `<button class="small-action" data-action="edit-record" data-id="${escapeHtml(group.ids[0])}">编辑</button>
+         <button class="small-action delete" data-action="delete-record" data-ids="${escapeHtml(group.ids[0])}">删除</button>`;
     return `
       <tr>
-        <td data-label="日期"><span class="cell-value">${formatDate(record.date)}</span></td>
-        <td data-label="达人昵称" class="cell-main"><span class="cell-value">${escapeHtml(record.douyinName || "—")}</span></td>
-        <td data-label="抖音号"><span class="cell-value">${escapeHtml(record.douyinNumber || "—")}</span></td>
+        <td data-label="日期"><span class="cell-value">${formatDate(group.date)}</span></td>
+        <td data-label="达人昵称" class="cell-main"><span class="cell-value">${escapeHtml(group.douyinName || "—")}</span></td>
+        <td data-label="抖音号"><span class="cell-value">${escapeHtml(group.douyinNumber || "—")}</span></td>
         <td data-label="整体ROI" class="number-cell"><span class="cell-value"><span class="roi-value ${roi >= 1 ? "roi-good" : "roi-warn"}">${roi.toFixed(2)}</span></span></td>
         <td data-label="整体消耗" class="number-cell"><span class="cell-value">${money(spend, 2)}</span></td>
         <td data-label="整体成交金额" class="number-cell"><span class="cell-value">${money(revenue, 2)}</span></td>
         <td data-label="净ROI" class="number-cell"><span class="cell-value"><span class="roi-value ${netRoi >= 1 ? "roi-good" : "roi-warn"}">${netRoi.toFixed(2)}</span></span></td>
         <td data-label="净成交金额" class="number-cell"><span class="cell-value">${money(net, 2)}</span></td>
         <td data-label="操作" class="action-cell">
-          <div class="table-actions">
-            <button class="small-action" data-action="edit-record" data-id="${escapeHtml(record.id)}">编辑</button>
-            <button class="small-action delete" data-action="delete-record" data-id="${escapeHtml(record.id)}">删除</button>
-          </div>
+          <div class="table-actions">${actions}</div>
         </td>
       </tr>`;
   }).join("");
-  $("#recordEmptyState").classList.toggle("hidden", rows.length > 0);
-  $("#recordTableBody").closest(".table-scroll").classList.toggle("hidden", rows.length === 0);
+  $("#recordEmptyState").classList.toggle("hidden", groups.length > 0);
+  $("#recordTableBody").closest(".table-scroll").classList.toggle("hidden", groups.length === 0);
 }
 
 function renderBackup() {
@@ -1250,14 +1284,22 @@ async function deleteRecharge(id) {
   toast(isPayment ? "付款记录已删除" : "充值记录已删除");
 }
 
-async function deleteRecord(id) {
-  const confirmed = await askConfirm("删除这条数据？", "删除后将影响对应日期的看板汇总，此操作无法撤销。", "删除数据");
+async function deleteRecords(ids) {
+  const list = [...new Set(ids.filter(Boolean))];
+  if (!list.length) return;
+  const confirmed = list.length > 1
+    ? await askConfirm("删除这一行的合并数据？", `这一行由 ${list.length} 条记录合并展示（同一达人不同账户/口径），会一起删除，无法撤销。`, `删除 ${list.length} 条`)
+    : await askConfirm("删除这条数据？", "删除后将影响对应日期的看板汇总，此操作无法撤销。", "删除数据");
   if (!confirmed) return;
-  state.records = state.records.filter((item) => item.id !== id);
+  state.records = state.records.filter((item) => !list.includes(item.id));
   markAsRealData();
   if (!(await saveState())) return;
   renderAll();
-  toast("数据记录已删除");
+  toast(list.length > 1 ? `已删除 ${list.length} 条合并数据` : "数据记录已删除");
+}
+
+async function deleteRecord(id) {
+  return deleteRecords([id]);
 }
 
 function downloadFile(filename, content, type) {
@@ -1391,9 +1433,14 @@ function bindEvents() {
   $("#recordTableBody").addEventListener("click", (event) => {
     const button = event.target.closest("[data-action]");
     if (!button) return;
-    const record = state.records.find((item) => item.id === button.dataset.id);
-    if (button.dataset.action === "edit-record") openRecordModal(record);
-    if (button.dataset.action === "delete-record") deleteRecord(button.dataset.id);
+    if (button.dataset.action === "edit-record") {
+      const record = state.records.find((item) => item.id === button.dataset.id);
+      if (record) openRecordModal(record);
+      return;
+    }
+    if (button.dataset.action === "delete-record") {
+      deleteRecords(String(button.dataset.ids || button.dataset.id || "").split(","));
+    }
   });
 
   $$('[data-close-modal]').forEach((button) => button.addEventListener("click", () => closeModal(button.dataset.closeModal)));
