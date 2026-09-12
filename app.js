@@ -1326,20 +1326,66 @@ function csvEscape(value) {
 }
 
 function exportCsv() {
-  const rows = filteredRecords();
-  const header = ["日期", "计划名称", "平台", "广告账户", "消耗", "展现", "点击", "线索", "订单", "成交金额", "ROI", "CPC", "CPA", "备注"];
-  const dataRows = rows.map((record) => {
-    const campaign = campaignById(record.campaignId) || {};
-    return [
-      record.date, campaign.name || "已删除的计划", campaign.platform || "", campaign.account || "", record.spend,
-      record.impressions, record.clicks, record.leads, record.orders, record.revenue,
-      ratio(record.revenue, record.spend).toFixed(2), ratio(record.spend, record.clicks).toFixed(2),
-      ratio(record.spend, record.orders).toFixed(2), record.notes || "",
-    ].map(csvEscape).join(",");
-  });
-  const csv = `\ufeff${header.join(",")}\n${dataRows.join("\n")}`;
-  downloadFile(`投流每日数据-${localDate()}.csv`, csv, "text/csv;charset=utf-8");
-  toast(`已导出 ${rows.length} 条数据`);
+  const groups = displayRecordGroups(filteredRecords());
+  if (!groups.length) {
+    toast("当前范围没有可导出的数据");
+    return;
+  }
+  const summary = groups.reduce((acc, item) => ({
+    spend: acc.spend + item.totalSpend,
+    revenue: acc.revenue + item.totalRevenue,
+    net: acc.net + item.netRevenue,
+  }), { spend: 0, revenue: 0, net: 0 });
+  // 与界面口径一致：合并后的行 + 只保留有数据的日期
+  const rows = [
+    ["日期", "达人昵称", "抖音号", "整体ROI", "整体消耗", "整体成交金额", "净ROI", "净成交金额"],
+    ...groups
+      .slice()
+      .sort((a, b) => String(b.date).localeCompare(String(a.date)) || String(a.douyinName).localeCompare(String(b.douyinName)))
+      .map((group) => [
+        group.date,
+        group.douyinName || "—",
+        group.douyinNumber || "—",
+        Number(group.roi.toFixed(4)),
+        Number(group.totalSpend.toFixed(2)),
+        Number(group.totalRevenue.toFixed(2)),
+        Number(group.netRoi.toFixed(4)),
+        Number(group.netRevenue.toFixed(2)),
+      ]),
+    [],
+    ["合计", "", "", summary.spend > 0 ? Number((summary.revenue / summary.spend).toFixed(4)) : 0,
+      Number(summary.spend.toFixed(2)), Number(summary.revenue.toFixed(2)),
+      summary.spend > 0 ? Number((summary.net / summary.spend).toFixed(4)) : 0, Number(summary.net.toFixed(2))],
+  ];
+  // 第二张表保留未合并的原始记录，便于对账追溯
+  const raw = [
+    ["日期", "达人昵称", "抖音号", "整体消耗", "整体成交金额", "净成交金额", "记录ID", "广告账户ID"],
+    ...filteredRecords()
+      .slice()
+      .sort((a, b) => String(b.date).localeCompare(String(a.date)))
+      .map((record) => {
+        const metrics = recordMetrics(record);
+        return [
+          record.date,
+          record.douyinName || "—",
+          record.douyinNumber || "—",
+          Number(metrics.totalSpend.toFixed(2)),
+          Number(metrics.totalRevenue.toFixed(2)),
+          Number(metrics.netRevenue.toFixed(2)),
+          String(record.id || ""),
+          String(record.advertiserId || (campaignById(record.campaignId) || {}).advertiserId || ""),
+        ];
+      }),
+  ];
+  if (!window.TrafficExcel?.downloadWorkbook) {
+    toast("Excel 组件未加载，请刷新页面后重试");
+    return;
+  }
+  window.TrafficExcel.downloadWorkbook(`投流消耗-${localDate()}.xlsx`, [
+    { name: "消耗端", rows },
+    { name: "原始明细", rows: raw },
+  ]);
+  toast(`已导出 Excel（${groups.length} 行，另附 ${raw.length - 1} 条原始明细）`);
 }
 
 function exportRechargeCsv() {
