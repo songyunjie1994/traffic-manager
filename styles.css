@@ -2653,6 +2653,13 @@ tbody tr:hover td {
 }
 
 /* ===== 消耗端表格：等宽列、一屏放下、单元格自动换行（2026-09-12） ===== */
+.records-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
 .records-table {
   table-layout: fixed;
   width: 100%;
