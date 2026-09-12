@@ -2927,6 +2927,7 @@ tbody tr:hover td {
 
   .records-table {
     table-layout: fixed;
+    min-width: 0;
   }
 
   .records-table thead th,
@@ -2996,6 +2997,7 @@ tbody tr:hover td {
 
   .records-table {
     table-layout: auto;
+    min-width: 0;
   }
 
   .records-table thead {
