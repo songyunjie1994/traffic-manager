@@ -9,7 +9,7 @@
       content="以云端数据为主，支持充值登记、消耗录入与投流报表的管理系统。"
     />
     <title>投流管理系统</title>
-    <link rel="stylesheet" href="styles.css?v=1.6.0" />
+    <link rel="stylesheet" href="styles.css?v=1.7.0" />
   </head>
   <body>
     <div class="app-shell">
@@ -38,6 +38,10 @@
           <button class="nav-item" data-view="records">
             <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 18 10 13l3 3 6-8M14 8h5v5" /></svg></span>
             消耗端
+          </button>
+          <button class="nav-item" data-view="accounts">
+            <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 8.5h16v10H4zM4 12h16M8 8.5V6.8A1.8 1.8 0 0 1 9.8 5h4.4A1.8 1.8 0 0 1 16 6.8v1.7" /></svg></span>
+            账户配置
           </button>
           <button class="nav-item active" data-view="dashboard">
             <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 19V11h3v8H5Zm5.5 0V5h3v14h-3Zm5.5 0v-6h3v6h-3Z" /></svg></span>
@@ -159,6 +163,9 @@
               <select id="recordPlatformFilter" aria-label="按平台筛选">
                 <option value="all">全部平台</option>
               </select>
+              <select id="recordBrokerFilter" aria-label="按投流中介筛选">
+                <option value="all">全部投流中介</option>
+              </select>
             </div>
 
             <div class="record-summary" id="recordSummary"></div>
@@ -186,6 +193,62 @@
                 <div class="empty-icon">↗</div>
                 <h3>当前范围没有数据</h3>
                 <p>调整日期范围，或录入一条新的投流数据。</p>
+              </div>
+            </article>
+          </section>
+
+          <section class="view" id="accountsView">
+            <div class="section-toolbar">
+              <div>
+                <p class="section-kicker">账户配置</p>
+                <h2>广告账户</h2>
+                <p>维护广告账户与所属投流中介；消耗端可按投流中介筛选。</p>
+              </div>
+              <div class="toolbar-actions">
+                <button class="button button-primary" id="addCampaignButton">＋ 新建账户</button>
+              </div>
+            </div>
+
+            <div class="filter-bar">
+              <label class="search-field">
+                <span aria-hidden="true">⌕</span>
+                <input type="search" id="campaignSearch" placeholder="搜索账户名或负责人" />
+              </label>
+              <select id="campaignBrokerFilter" aria-label="按投流中介筛选">
+                <option value="all">全部投流中介</option>
+              </select>
+              <select id="campaignPlatformFilter" aria-label="按平台筛选">
+                <option value="all">全部平台</option>
+              </select>
+              <select id="campaignStatusFilter" aria-label="按状态筛选">
+                <option value="all">全部状态</option>
+                <option value="投放中">投放中</option>
+                <option value="已暂停">已暂停</option>
+                <option value="已结束">已结束</option>
+              </select>
+            </div>
+
+            <article class="panel table-panel accounts-panel">
+              <div class="table-scroll accounts-scroll">
+                <table class="accounts-table">
+                  <thead>
+                    <tr>
+                      <th>账户 / 计划名称</th>
+                      <th>平台</th>
+                      <th>投流中介</th>
+                      <th class="number-cell">消费合计</th>
+                      <th>负责人</th>
+                      <th>状态</th>
+                      <th class="action-cell">操作</th>
+                    </tr>
+                  </thead>
+                  <tbody id="campaignTableBody"></tbody>
+                </table>
+              </div>
+              <div class="empty-state hidden" id="campaignEmptyState">
+                <div class="empty-icon">＋</div>
+                <h3>还没有账户</h3>
+                <p>点右上角「新建账户」添加，或等千川采集自动同步账户。</p>
               </div>
             </article>
           </section>
@@ -297,10 +360,15 @@
             <span>目标 ROI *</span>
             <input id="campaignTargetRoi" type="number" min="0" step="0.01" required placeholder="2.50" />
           </label>
-          <label class="form-field">
-            <span>负责人</span>
-            <input id="campaignOwner" maxlength="30" placeholder="姓名" />
-          </label>
+            <label class="form-field">
+              <span>投流中介</span>
+              <input id="campaignBroker" maxlength="40" list="campaignBrokerOptions" placeholder="例如：惠和 / 域见未来1 / ISA MORVAN" />
+              <datalist id="campaignBrokerOptions"></datalist>
+            </label>
+            <label class="form-field">
+              <span>负责人</span>
+              <input id="campaignOwner" maxlength="30" placeholder="姓名" />
+            </label>
           <label class="form-field">
             <span>开始日期 *</span>
             <input id="campaignStartDate" type="date" required />
@@ -459,6 +527,6 @@
 
     <div class="toast-region" id="toastRegion" aria-live="polite"></div>
     <script src="excel-export.js?v=1.0.0"></script>
-    <script src="app.js?v=1.9.0"></script>
+    <script src="app.js?v=2.0.0"></script>
   </body>
 </html>
