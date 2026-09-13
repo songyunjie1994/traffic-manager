@@ -11,12 +11,9 @@ const RECHARGE_LEDGER_META = Object.freeze({
   pending: { title: "待付款", dateLabel: "登记日期", accountLabel: "待付款账户", amountLabel: "待付金额", addLabel: "" },
 });
 const ZHIPU_VISION_CONFIG = Object.freeze({
-  endpoint: "https://open.bigmodel.cn/api/paas/v4/chat/completions",
-  model: "glm-4v-flash",
-  keyStorageKey: "traffic_manager_zhipu_api_key",
-  defaultApiKey: "2850c4bd97444eaf832119a49e23f54a.OojmSYrwr05W6qKm",
+  // 识图统一走 Supabase 边缘函数（智谱 Key 存在服务端，前端不再持有 Key）
+  url: "https://mabxdkjqilulkrmqrrgo.supabase.co/functions/v1/payment-recognize",
 });
-const VISION_PROMPT = "这是付款或转账截图。请识别并只输出一个 JSON 对象，不要输出任何其他文字：{\"date\":\"YYYY-MM-DD\",\"amount\":数字,\"payer\":\"付款方名称\",\"payerBank\":\"付款方银行\",\"payerAccount\":\"付款方账号\",\"payee\":\"收款方名称\",\"payeeBank\":\"收款方银行\",\"payeeAccount\":\"收款方账号\"}。date 填截图中的交易日期（没有则填空字符串）；amount 填付款金额的纯数字，不含单位和千分位逗号；payer/payee 填付款方、收款方的户名或名称；银行填开户行或支付渠道名称（如：工商银行、支付宝、微信支付）；账号填银行卡号或支付账号；识别不到的字段一律填空字符串。";
 const CLOUD_CONFIG = Object.freeze({
   url: "https://mabxdkjqilulkrmqrrgo.supabase.co",
   publishableKey: "sb_publishable_lfHpd1y1gCaQIDXfRkD_8w_O1bPMWGx",
@@ -37,6 +34,7 @@ let lastCloudSnapshot = "";
 let lastCloudRefreshAt = 0;
 let activeRechargeLedger = "recharge";
 let paymentOcrResult = null;
+let receiptImageObjectUrl = "";
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
@@ -686,19 +684,6 @@ function setPaymentOcrStatus(message, progress = 0, stateName = "working") {
   $("#paymentOcrProgress").style.width = `${percent}%`;
 }
 
-function getZhipuApiKey() {
-  const saved = String(localStorage.getItem(ZHIPU_VISION_CONFIG.keyStorageKey) || "").trim();
-  return saved || ZHIPU_VISION_CONFIG.defaultApiKey;
-}
-
-function saveZhipuApiKey(value) {
-  try {
-    localStorage.setItem(ZHIPU_VISION_CONFIG.keyStorageKey, String(value || "").trim());
-  } catch (error) {
-    console.warn("保存 API Key 失败", error);
-  }
-}
-
 function fileToDataUrl(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -708,62 +693,56 @@ function fileToDataUrl(file) {
   });
 }
 
-async function callZhipuVision(apiKey, dataUrl) {
-  const response = await fetch(ZHIPU_VISION_CONFIG.endpoint, {
+// 识图：POST 到 Supabase 边缘函数（服务端持有智谱 Key，并顺手把凭证图存进私有空间）
+async function callPaymentRecognition(dataUrl) {
+  const response = await fetch(ZHIPU_VISION_CONFIG.url, {
     method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
-    body: JSON.stringify({
-      model: ZHIPU_VISION_CONFIG.model,
-      temperature: 0.1,
-      messages: [{
-        role: "user",
-        content: [
-          { type: "image_url", image_url: { url: dataUrl } },
-          { type: "text", text: VISION_PROMPT },
-        ],
-      }],
-    }),
+    headers: {
+      "Content-Type": "application/json",
+      apikey: CLOUD_CONFIG.publishableKey,
+    },
+    body: JSON.stringify({ imageDataUrl: dataUrl }),
   });
+  const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
-    const detail = await response.text().catch(() => "");
-    if (response.status === 401) throw new Error("API Key 无效或已过期：请在上方粘贴你自己的 Key（open.bigmodel.cn 免费申请，只保存在本机浏览器）");
-    if (response.status === 429) throw new Error("调用过于频繁，请稍后再试");
-    throw new Error(`接口错误 ${response.status} ${detail.slice(0, 100)}`);
+    const errorMessages = {
+      AI_NOT_CONFIGURED: "云端 AI Key 尚未配置，请联系管理员",
+      AI_AUTH_FAILED: "云端 AI Key 无效或已过期",
+      AI_RATE_LIMITED: "AI 调用过于频繁，请稍后再试",
+      RATE_LIMITED: "上传过于频繁，请稍后再试",
+      INVALID_IMAGE: "图片格式无效，请重新选择",
+      IMAGE_TOO_LARGE: "图片不能超过 8MB",
+      IMAGE_STORAGE_FAILED: "凭证图片保存失败，请稍后重试",
+      AI_OUTPUT_INVALID: "没有识别出完整付款信息，请换一张清晰截图",
+      ORIGIN_NOT_ALLOWED: "当前网址不允许调用图片识别",
+    };
+    throw new Error(errorMessages[payload?.error] || "云端识别暂时不可用，请稍后重试");
   }
-  const data = await response.json();
-  return String(data?.choices?.[0]?.message?.content || "");
+  if (!payload?.result || typeof payload.result !== "object") throw new Error("云端识别返回格式异常");
+  return payload.result;
 }
 
-function parseVisionAnswer(answer) {
-  const text = String(answer || "").replace(/```json|```/gi, "").trim();
-  const jsonText = text.match(/\{[\s\S]*\}/)?.[0] || "";
-  let date = "";
-  let amount = 0;
-  let payer = "";
-  let payerBank = "";
-  let payerAccount = "";
-  let payee = "";
-  let payeeBank = "";
-  let payeeAccount = "";
+// 查看已保存的付款凭证（图片存在 Supabase 私有空间，按路径取回）
+async function showPaymentReceiptImage(imagePath) {
+  if (!imagePath) return;
   try {
-    const parsed = JSON.parse(jsonText || "{}");
-    date = String(parsed.date || "").trim();
-    amount = Number(String(parsed.amount ?? "").replace(/[^\d.]/g, "")) || 0;
-    payer = String(parsed.payer || "").trim();
-    payerBank = String(parsed.payerBank || "").trim();
-    payerAccount = String(parsed.payerAccount || "").trim();
-    payee = String(parsed.payee || "").trim();
-    payeeBank = String(parsed.payeeBank || "").trim();
-    payeeAccount = String(parsed.payeeAccount || "").trim();
+    const response = await fetch(ZHIPU_VISION_CONFIG.url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        apikey: CLOUD_CONFIG.publishableKey,
+      },
+      body: JSON.stringify({ action: "get-image", imagePath }),
+    });
+    if (!response.ok) throw new Error("凭证图片读取失败");
+    const blob = await response.blob();
+    if (receiptImageObjectUrl) URL.revokeObjectURL(receiptImageObjectUrl);
+    receiptImageObjectUrl = URL.createObjectURL(blob);
+    $("#receiptImage").src = receiptImageObjectUrl;
+    showModal("receiptImageModal");
   } catch (error) {
-    const amountMatch = text.match(/([1-9][\d,]*(?:\.\d{1,2})?)/);
-    if (amountMatch) amount = Number(amountMatch[1].replaceAll(",", "")) || 0;
+    toast(error.message || "凭证图片读取失败", "error");
   }
-  if (date && !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-    const m = date.match(/(20\d{2})[-/年.](\d{1,2})[-/月.](\d{1,2})/);
-    date = m ? `${m[1]}-${String(m[2]).padStart(2, "0")}-${String(m[3]).padStart(2, "0")}` : "";
-  }
-  return { date, amount, payer, payerBank, payerAccount, payee, payeeBank, payeeAccount, confidence: 100 };
 }
 
 async function recognizePaymentImage(file) {
@@ -775,20 +754,13 @@ async function recognizePaymentImage(file) {
     toast("图片不能超过 8MB", "error");
     return;
   }
-  const apiKey = getZhipuApiKey();
-  if (!apiKey) {
-    setPaymentOcrStatus("请先在下方填写智谱 API Key（bigmodel.cn 免费申请）", 1, "error");
-    $("#zhipuApiKey").focus();
-    return;
-  }
   $("#paymentImageName").textContent = file.name;
   $("#paymentUploadButton").disabled = true;
   setPaymentOcrStatus("正在上传截图…", 0.2);
   try {
     const dataUrl = await fileToDataUrl(file);
-    setPaymentOcrStatus("智谱 GLM-4V 正在识别付款信息…", 0.5);
-    const answer = await callZhipuVision(apiKey, dataUrl);
-    const parsed = parseVisionAnswer(answer);
+    setPaymentOcrStatus("云端 AI 正在识别付款信息…", 0.5);
+    const parsed = await callPaymentRecognition(dataUrl);
     paymentOcrResult = parsed;
     if (parsed.date) $("#paymentDate").value = parsed.date;
     if (parsed.amount) $("#paymentAmount").value = parsed.amount;
@@ -799,7 +771,7 @@ async function recognizePaymentImage(file) {
     $("#paymentPayeeBank").value = parsed.payeeBank;
     $("#paymentPayeeAccount").value = parsed.payeeAccount;
     const missing = [!parsed.amount && "金额", !parsed.payer && "付款方", !parsed.payee && "收款方"].filter(Boolean);
-    setPaymentOcrStatus(missing.length ? `识别完成，请补充${missing.join("、")}` : "识别完成，请确认后保存", 1, "success");
+    setPaymentOcrStatus(missing.length ? `识别完成，请补充${missing.join("、")}` : "已按人民币金额识别，请确认后保存", 1, "success");
   } catch (error) {
     console.error(error);
     setPaymentOcrStatus(`识别失败：${error.message || "请重试或手动填写"}`, 1, "error");
@@ -828,7 +800,13 @@ function renderRecharges() {
   $("#addRechargeButton").textContent = meta.addLabel;
   $("#rechargeTableBody").innerHTML = rows.map((recharge) => {
     const campaign = campaignById(recharge.campaignId);
-    const actions = activeRechargeLedger !== "pending" ? `<div class="table-actions"><button class="small-action" data-action="edit-ledger" data-id="${escapeHtml(recharge.id)}">编辑</button><button class="small-action delete" data-action="delete-ledger" data-id="${escapeHtml(recharge.id)}">删除</button></div>` : "—";
+    // 付款记录：有凭证图显示「凭证」（可查看），没有则显示「补图片」
+    const receiptAction = activeRechargeLedger === "payment"
+      ? recharge.imagePath
+        ? `<button class="small-action receipt-action" data-action="view-payment-image" data-id="${escapeHtml(recharge.id)}">凭证</button>`
+        : `<button class="small-action receipt-action" data-action="attach-payment-image" data-id="${escapeHtml(recharge.id)}">补图片</button>`
+      : "";
+    const actions = activeRechargeLedger !== "pending" ? `<div class="table-actions">${receiptAction}<button class="small-action" data-action="edit-ledger" data-id="${escapeHtml(recharge.id)}">编辑</button><button class="small-action delete" data-action="delete-ledger" data-id="${escapeHtml(recharge.id)}">删除</button></div>` : "—";
     if (activeRechargeLedger === "payment") {
       return `<tr>
         <td>${formatDate(recharge.date)}</td>
@@ -1061,7 +1039,6 @@ function openPaymentModal(payment = null) {
   $("#paymentPayee").value = payment?.payee || "";
   $("#paymentPayeeBank").value = payment?.payeeBank || "";
   $("#paymentPayeeAccount").value = payment?.payeeAccount || "";
-  $("#zhipuApiKey").value = getZhipuApiKey();
   showModal("paymentModal");
 }
 
@@ -1094,6 +1071,10 @@ function showModal(id) {
 }
 
 function closeModal(id) {
+  if (id === "receiptImageModal" && receiptImageObjectUrl) {
+    URL.revokeObjectURL(receiptImageObjectUrl);
+    receiptImageObjectUrl = "";
+  }
   $(`#${id}`).classList.add("hidden");
   if (!$$(".modal-backdrop:not(.hidden), .confirm-backdrop:not(.hidden)").length) document.body.style.overflow = "";
 }
@@ -1178,7 +1159,10 @@ async function handlePaymentSubmit(event) {
     payeeAccount: $("#paymentPayeeAccount").value.trim(),
     recordType: "payment",
     status: "已付款",
-    source: paymentOcrResult ? "glm-4v" : (existing?.source || "manual"),
+    amountCurrency: "CNY",
+    // 识图时边缘函数会把凭证图存进 Supabase 私有空间，这里只记路径，列表里点「凭证」可查看
+    imagePath: paymentOcrResult?.imagePath || existing?.imagePath || "",
+    source: paymentOcrResult ? "supabase-vision" : (existing?.source || "manual"),
     ocrConfidence: paymentOcrResult?.confidence || existing?.ocrConfidence || 0,
     createdAt: existing?.createdAt || new Date().toISOString(),
     updatedAt: new Date().toISOString(),
@@ -1451,7 +1435,6 @@ function bindEvents() {
     event.target.setCustomValidity("");
   });
   $("#paymentUploadButton").addEventListener("click", () => $("#paymentImageInput").click());
-  $("#zhipuApiKey").addEventListener("input", (event) => saveZhipuApiKey(event.target.value));
   $("#paymentImageInput").addEventListener("change", (event) => {
     const [file] = event.target.files;
     if (file) recognizePaymentImage(file);
@@ -1476,6 +1459,8 @@ function bindEvents() {
     const recharge = state.recharges.find((item) => item.id === button.dataset.id);
     if (button.dataset.action === "edit-ledger") recharge?.recordType === "payment" ? openPaymentModal(recharge) : openRechargeModal(recharge);
     if (button.dataset.action === "delete-ledger") deleteRecharge(button.dataset.id);
+    if (button.dataset.action === "view-payment-image") showPaymentReceiptImage(recharge?.imagePath);
+    if (button.dataset.action === "attach-payment-image" && recharge) openPaymentModal(recharge);
   });
 
   $("#recordTableBody").addEventListener("click", (event) => {
