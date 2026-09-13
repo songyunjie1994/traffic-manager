@@ -2701,9 +2701,39 @@ tbody tr:hover td {
   justify-content: flex-end;
 }
 
+/* ===== 账户配置页 + 投流中介标记 ===== */
+.accounts-table {
+  width: 100%;
+  table-layout: fixed;
+}
+
+.accounts-table th,
+.accounts-table td {
+  padding: 12px 10px;
+  vertical-align: middle;
+}
+
+.accounts-table th:nth-child(1) { width: 30%; }
+.accounts-table th:nth-child(7) { width: 108px; }
+
+.broker-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 9px;
+  color: #5d50dd;
+  background: #eeecff;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.muted-cell {
+  color: var(--reference-muted);
+}
+
 /* ===== 付款凭证（Supabase 私有空间里的原图查看） ===== */
-.receipt-action {
-  color: #4338ca;
+.receipt-action {  color: #4338ca;
   background: #eef2ff;
 }
 
