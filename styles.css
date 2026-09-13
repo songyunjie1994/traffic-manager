@@ -2661,8 +2661,7 @@ tbody tr:hover td {
 }
 
 /* 合并行标记：同一天同达人的多条记录（不同账户/口径）合并展示时提示条数 */
-.merge-badge {
-  display: inline-flex;
+.merge-badge {  display: inline-flex;
   align-items: center;
   padding: 3px 8px;
   margin-right: 8px;
@@ -2700,6 +2699,44 @@ tbody tr:hover td {
 .records-table .table-actions {
   flex-wrap: wrap;
   justify-content: flex-end;
+}
+
+/* ===== 付款凭证（Supabase 私有空间里的原图查看） ===== */
+.receipt-action {
+  color: #4338ca;
+  background: #eef2ff;
+}
+
+.receipt-image-modal {
+  width: min(900px, calc(100vw - 32px));
+  max-width: 900px;
+}
+
+.receipt-image-frame {
+  display: grid;
+  max-height: calc(100dvh - 180px);
+  overflow: auto;
+  background: #f8fafc;
+  border: 1px solid var(--reference-border);
+  border-radius: 12px;
+  place-items: center;
+}
+
+.receipt-image-frame img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  object-fit: contain;
+}
+
+@media (max-width: 720px) {
+  .receipt-image-modal {
+    width: 100%;
+  }
+
+  .receipt-image-frame {
+    max-height: calc(88dvh - 90px);
+  }
 }
 
 /* ===================================================================
