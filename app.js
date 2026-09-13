@@ -726,7 +726,7 @@ async function callZhipuVision(apiKey, dataUrl) {
   });
   if (!response.ok) {
     const detail = await response.text().catch(() => "");
-    if (response.status === 401) throw new Error("API Key 无效，请检查后重新填写");
+    if (response.status === 401) throw new Error("API Key 无效或已过期：请在上方粘贴你自己的 Key（open.bigmodel.cn 免费申请，只保存在本机浏览器）");
     if (response.status === 429) throw new Error("调用过于频繁，请稍后再试");
     throw new Error(`接口错误 ${response.status} ${detail.slice(0, 100)}`);
   }
