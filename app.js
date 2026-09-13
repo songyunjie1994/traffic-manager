@@ -4,7 +4,9 @@ const STORAGE_KEY = "traffic_manager_data_v1";
 const APP_VERSION = "1.5.0";
 const CLOUD_ROW_ID = 2;
 const RECHARGE_WORKFLOW_VERSION = "2026-08-29-v1";
-const REQUIRED_ACCOUNT_NAMES = ["杭州夕雾", "MELBOURNE", "江西井意", "浏阳市关口韵帆", "ISAMORVAN", "研汁工社"];
+// 早期版本会在首次迁移时补建这 6 个手工账户；现在账户全部来自千川采集，
+// 用户已确认删除，这里留空避免它们被自动重建（2026-09-13）。
+const REQUIRED_ACCOUNT_NAMES = [];
 const RECHARGE_LEDGER_META = Object.freeze({
   recharge: { title: "充值记录", dateLabel: "充值日期", accountLabel: "充值账户", amountLabel: "充值金额", addLabel: "＋ 添加充值记录" },
   payment: { title: "付款记录", dateLabel: "付款日期", accountLabel: "付款方", amountLabel: "付款金额", addLabel: "＋ 上传付款截图" },
@@ -23,6 +25,7 @@ const VIEW_META = {
   dashboard: ["查看充值、消耗与账户余额汇总", "报表端"],
   campaigns: ["管理充值、付款与待付款记录", "充值端"],
   records: ["记录每日消耗和成交数据", "消耗端"],
+  accounts: ["维护广告账户与所属投流中介", "账户配置"],
   backup: ["导出、恢复与管理云端数据", "数据备份"],
 };
 
@@ -168,13 +171,17 @@ function normalizeState(candidate) {
   if (!candidate || !Array.isArray(candidate.campaigns) || !Array.isArray(candidate.records)) {
     throw new Error("文件不是有效的投流管理系统备份");
   }
+  const { campaigns, recharges, records, settings, demo, version, ...rest } = candidate;
   return {
     version: APP_VERSION,
-    demo: Boolean(candidate.demo),
-    campaigns: candidate.campaigns.map((item) => ({ ...item })),
-    recharges: Array.isArray(candidate.recharges) ? candidate.recharges.map((item) => ({ ...item })) : [],
-    records: candidate.records.map((item) => ({ ...item })),
-    settings: candidate.settings && typeof candidate.settings === "object" ? candidate.settings : {},
+    demo: Boolean(demo),
+    campaigns: campaigns.map((item) => ({ ...item })),
+    recharges: Array.isArray(recharges) ? recharges.map((item) => ({ ...item })) : [],
+    records: records.map((item) => ({ ...item })),
+    settings: settings && typeof settings === "object" ? settings : {},
+    // 云端还有 financeRecords 等本页不渲染的字段：原样带回去，
+    // 否则保存时整份状态回写会把它们冲掉（2026-09-13 财务记录被冲过一次）。
+    ...rest,
   };
 }
 
@@ -506,6 +513,18 @@ function renderSelectOptions() {
     select.value = PLATFORMS.includes(current) ? current : "all";
   });
 
+  // 投流中介下拉：来自账户里已填过的中介名（账户页筛选 + 消耗端筛选 + 表单建议）
+  const brokers = [...new Set(state.campaigns.map((item) => String(item.broker || "").trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, "zh"));
+  for (const [selector, allLabel] of [["#campaignBrokerFilter", "全部投流中介"], ["#recordBrokerFilter", "全部投流中介"]]) {
+    const select = $(selector);
+    if (!select) continue;
+    const current = select.value;
+    select.innerHTML = `<option value="all">${allLabel}</option>${brokers.map((item) => `<option value="${escapeHtml(item)}">${escapeHtml(item)}</option>`).join("")}`;
+    select.value = brokers.includes(current) ? current : "all";
+  }
+  const brokerOptions = $("#campaignBrokerOptions");
+  if (brokerOptions) brokerOptions.innerHTML = brokers.map((item) => `<option value="${escapeHtml(item)}"></option>`).join("");
+
   const recordSelect = $("#recordCampaign");
   const rechargeSelect = $("#rechargeCampaign");
   const currentRecordCampaign = recordSelect.value;
@@ -836,23 +855,30 @@ function renderCampaigns() {
   const query = $("#campaignSearch").value.trim().toLowerCase();
   const platform = $("#campaignPlatformFilter").value;
   const status = $("#campaignStatusFilter").value;
+  const broker = $("#campaignBrokerFilter") ? $("#campaignBrokerFilter").value : "all";
   const rows = state.campaigns.filter((item) => {
-    const haystack = [item.name, item.account, item.owner].join(" ").toLowerCase();
-    return (!query || haystack.includes(query)) && (platform === "all" || item.platform === platform) && (status === "all" || item.status === status);
+    const haystack = [item.name, item.account, item.owner, item.broker].join(" ").toLowerCase();
+    return (!query || haystack.includes(query))
+      && (platform === "all" || item.platform === platform)
+      && (status === "all" || item.status === status)
+      && (broker === "all" || String(item.broker || "") === broker);
   });
+  const spendByCampaign = new Map();
+  for (const record of state.records) {
+    const key = String(record.campaignId || "");
+    const metrics = recordMetrics(record);
+    spendByCampaign.set(key, (spendByCampaign.get(key) || 0) + metrics.totalSpend);
+  }
   $("#campaignTableBody").innerHTML = rows.map((campaign) => `
     <tr>
       <td>${campaignNameCell(campaign, `开始于 ${formatDate(campaign.startDate)}`)}</td>
-      <td><div class="stacked-cell"><strong>${escapeHtml(campaign.platform)}</strong><span>${escapeHtml(campaign.account || "未填写账户")}</span></div></td>
-      <td>${escapeHtml(campaign.objective)}</td>
-      <td class="number-cell">${money(campaign.dailyBudget, 0)}</td>
-      <td class="number-cell"><strong>${Number(campaign.targetRoi || 0).toFixed(2)}</strong></td>
+      <td>${escapeHtml(campaign.platform || "—")}</td>
+      <td>${campaign.broker ? `<span class="broker-tag">${escapeHtml(campaign.broker)}</span>` : `<span class="muted-cell">未填写</span>`}</td>
+      <td class="number-cell">${money(spendByCampaign.get(campaign.id) || 0, 2)}</td>
       <td>${escapeHtml(campaign.owner || "—")}</td>
       <td>${statusBadge(campaign.status)}</td>
       <td class="action-cell">
         <div class="table-actions">
-          <button class="small-action" data-action="recharge-campaign" data-id="${escapeHtml(campaign.id)}">充值</button>
-          <button class="small-action" data-action="record-campaign" data-id="${escapeHtml(campaign.id)}">录数据</button>
           <button class="small-action" data-action="edit-campaign" data-id="${escapeHtml(campaign.id)}">编辑</button>
           <button class="small-action delete" data-action="delete-campaign" data-id="${escapeHtml(campaign.id)}">删除</button>
         </div>
@@ -868,11 +894,12 @@ function filteredRecords() {
   const start = $("#recordStartDate").value;
   const end = $("#recordEndDate").value;
   const platform = $("#recordPlatformFilter").value;
+  const broker = $("#recordBrokerFilter") ? $("#recordBrokerFilter").value : "all";
   return state.records.filter((record) => {
     const campaign = campaignById(record.campaignId);
     const haystack = [campaign?.name, campaign?.account, record.notes].join(" ").toLowerCase();
-    return (!query || haystack.includes(query)) && (!start || record.date >= start) && (!end || record.date <= end) && (platform === "all" || campaign?.platform === platform);
-  }).sort((a, b) => b.date.localeCompare(a.date) || String(b.createdAt).localeCompare(String(a.createdAt)));
+    return (!query || haystack.includes(query)) && (!start || record.date >= start) && (!end || record.date <= end) && (platform === "all" || campaign?.platform === platform) && (broker === "all" || String(campaign?.broker || "") === broker);
+  });
 }
 
 // 消耗端统一口径：日期 / 达人昵称 / 抖音号 / 整体ROI / 整体消耗 / 整体成交金额 / 净ROI / 净成交金额
@@ -990,6 +1017,7 @@ function openCampaignModal(campaign = null) {
   $("#campaignName").value = campaign?.name || "";
   $("#campaignPlatform").value = campaign?.platform || PLATFORMS[0];
   $("#campaignAccount").value = campaign?.account || "";
+  $("#campaignBroker").value = campaign?.broker || "";
   $("#campaignObjective").value = campaign?.objective || "商品成交";
   $("#campaignBudget").value = campaign?.dailyBudget ?? "";
   $("#campaignTargetRoi").value = campaign?.targetRoi ?? "";
@@ -1087,6 +1115,7 @@ async function handleCampaignSubmit(event) {
     name: $("#campaignName").value.trim(),
     platform: $("#campaignPlatform").value,
     account: $("#campaignAccount").value.trim(),
+    broker: $("#campaignBroker").value.trim(),
     objective: $("#campaignObjective").value,
     dailyBudget: Number($("#campaignBudget").value),
     targetRoi: Number($("#campaignTargetRoi").value),
@@ -1451,7 +1480,28 @@ function bindEvents() {
     const [file] = [...event.dataTransfer.files].filter((item) => item.type.startsWith("image/"));
     if (file) recognizePaymentImage(file);
   });
-  ["#recordSearch", "#recordStartDate", "#recordEndDate", "#recordPlatformFilter"].forEach((selector) => $(selector).addEventListener("input", renderRecords));
+  ["#recordSearch", "#recordStartDate", "#recordEndDate", "#recordPlatformFilter", "#recordBrokerFilter"].forEach((selector) => {
+    const element = $(selector);
+    if (element) element.addEventListener("input", renderRecords);
+  });
+
+  // 账户配置页：新建/编辑/删除账户 + 筛选（账户里维护"投流中介"，消耗端可按中介筛）
+  const addCampaignButton = $("#addCampaignButton");
+  if (addCampaignButton) addCampaignButton.addEventListener("click", () => openCampaignModal());
+  ["#campaignSearch", "#campaignPlatformFilter", "#campaignStatusFilter", "#campaignBrokerFilter"].forEach((selector) => {
+    const element = $(selector);
+    if (element) element.addEventListener("input", renderCampaigns);
+  });
+  const campaignTableBody = $("#campaignTableBody");
+  if (campaignTableBody) campaignTableBody.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-action]");
+    if (!button) return;
+    if (button.dataset.action === "edit-campaign") {
+      const campaign = campaignById(button.dataset.id);
+      if (campaign) openCampaignModal(campaign);
+    }
+    if (button.dataset.action === "delete-campaign") deleteCampaign(button.dataset.id);
+  });
 
   $("#rechargeTableBody").addEventListener("click", (event) => {
     const button = event.target.closest("[data-action]");
