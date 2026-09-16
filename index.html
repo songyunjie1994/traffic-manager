@@ -216,6 +216,7 @@
                       <th id="rechargeDateHeading">充值日期</th>
                       <th id="rechargeAccountHeading">充值账户</th>
                       <th id="rechargePayeeHeading">收款方</th>
+                      <th class="hidden" id="rechargeBrokerHeading">投流中介</th>
                       <th class="number-cell" id="rechargeAmountHeading">充值金额</th>
                       <th class="action-cell">操作</th>
                     </tr>
@@ -446,9 +447,10 @@
             <input id="campaignTargetRoi" type="number" min="0" step="0.01" required placeholder="2.50" />
           </label>
             <label class="form-field">
-              <span>投流中介</span>
-              <input id="campaignBroker" maxlength="40" list="campaignBrokerOptions" placeholder="例如：惠和 / 域见未来1 / ISA MORVAN" />
-              <datalist id="campaignBrokerOptions"></datalist>
+              <span>投流中介 *</span>
+              <select id="campaignBroker" required>
+                <option value="">请选择投流中介</option>
+              </select>
             </label>
             <label class="form-field">
               <span>负责人</span>
@@ -550,7 +552,11 @@
             <input id="rechargeCampaign" type="hidden" />
             <small class="field-hint">输入杭州、MELBOURNE 等关键词即可筛选账户。</small>
           </label>
-          <label class="form-field span-3"><span>充值金额（元）*</span><input id="rechargeAmount" type="number" min="0.01" step="0.01" inputmode="decimal" required placeholder="请输入充值金额" /></label>
+          <label class="form-field span-3">
+            <span>充值本金（元）*</span>
+            <input id="rechargeAmount" type="number" min="0.01" step="0.01" inputmode="decimal" required placeholder="请输入充值本金" />
+            <small class="field-hint" id="rechargeAmountHint">选择账户后自动计算预计到账金额。</small>
+          </label>
         </div>
         <div class="modal-actions"><button type="button" class="button button-ghost" data-close-modal="rechargeModal">取消</button><button type="submit" class="button button-primary">保存充值记录</button></div>
       </form>
@@ -612,6 +618,6 @@
 
     <div class="toast-region" id="toastRegion" aria-live="polite"></div>
     <script src="excel-export.js?v=1.0.0"></script>
-    <script src="app.js?v=2.1.0"></script>
+    <script src="app.js?v=2.2.0"></script>
   </body>
 </html>

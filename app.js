@@ -1,14 +1,16 @@
 "use strict";
 
 const STORAGE_KEY = "traffic_manager_data_v1";
-const APP_VERSION = "2.1.0";
+const APP_VERSION = "2.2.0";
 const CLOUD_ROW_ID = 2;
 const RECHARGE_WORKFLOW_VERSION = "2026-08-29-v1";
 // 早期版本会在首次迁移时补建这 6 个手工账户；现在账户全部来自千川采集，
 // 用户已确认删除，这里留空避免它们被自动重建（2026-09-13）。
 const REQUIRED_ACCOUNT_NAMES = [];
+const BROKERS = Object.freeze(["李杨tina", "李杨tes", "域见未来1", "惠和"]);
+const BROKER_REBATE_RATES = Object.freeze({ "李杨tes": 0.03 });
 const RECHARGE_LEDGER_META = Object.freeze({
-  recharge: { title: "充值记录", dateLabel: "充值日期", accountLabel: "充值账户", amountLabel: "充值金额", addLabel: "＋ 添加充值记录" },
+  recharge: { title: "充值记录", dateLabel: "充值日期", accountLabel: "充值账户", amountLabel: "到账金额", addLabel: "＋ 添加充值记录" },
   payment: { title: "付款记录", dateLabel: "付款日期", accountLabel: "付款方", amountLabel: "付款金额", addLabel: "＋ 上传付款截图" },
   pending: { title: "待付款", dateLabel: "登记日期", accountLabel: "待付款账户", amountLabel: "待付金额", addLabel: "" },
 });
@@ -554,8 +556,8 @@ function renderSelectOptions() {
     select.value = PLATFORMS.includes(current) ? current : "all";
   });
 
-  // 投流中介下拉：来自账户里已填过的中介名（账户页筛选 + 消耗端筛选 + 表单建议）
-  const brokers = [...new Set(state.campaigns.map((item) => String(item.broker || "").trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, "zh"));
+  // 投流中介是固定业务口径，账户页、消耗端和编辑表单共用同一份名单。
+  const brokers = [...BROKERS];
   for (const [selector, allLabel] of [["#campaignBrokerFilter", "全部投流中介"], ["#recordBrokerFilter", "全部投流中介"]]) {
     const select = $(selector);
     if (!select) continue;
@@ -563,8 +565,12 @@ function renderSelectOptions() {
     select.innerHTML = `<option value="all">${allLabel}</option>${brokers.map((item) => `<option value="${escapeHtml(item)}">${escapeHtml(item)}</option>`).join("")}`;
     select.value = brokers.includes(current) ? current : "all";
   }
-  const brokerOptions = $("#campaignBrokerOptions");
-  if (brokerOptions) brokerOptions.innerHTML = brokers.map((item) => `<option value="${escapeHtml(item)}"></option>`).join("");
+  const campaignBroker = $("#campaignBroker");
+  if (campaignBroker) {
+    const current = campaignBroker.value;
+    campaignBroker.innerHTML = `<option value="">请选择投流中介</option>${brokers.map((item) => `<option value="${escapeHtml(item)}">${escapeHtml(item)}</option>`).join("")}`;
+    campaignBroker.value = brokers.includes(current) ? current : "";
+  }
 
   const financeAccountFilter = $("#financeAccountFilter");
   if (financeAccountFilter) {
@@ -839,6 +845,41 @@ function normalizeReceiptText(value) {
   return String(value || "").toLowerCase().replace(/[^a-z0-9\u4e00-\u9fff]+/g, "");
 }
 
+function paymentBroker(payment) {
+  if (BROKERS.includes(payment?.broker)) return payment.broker;
+  const parties = normalizeReceiptText([payment?.payer, payment?.payerBank, payment?.payee, payment?.payeeBank].filter(Boolean).join(" "));
+  if (parties.includes("yujianfuturehongkonglimited")) return "域见未来1";
+  if (parties.includes("李杨") && (parties.includes("建设银行") || parties.includes("建行"))) return "李杨tes";
+  if (parties.includes("李杨") && (parties.includes("招商银行") || parties.includes("招行"))) return "李杨tina";
+  return "";
+}
+
+function brokerRebateAmounts(broker, baseAmount) {
+  const base = Math.max(0, Number(baseAmount || 0));
+  const rebateRate = Number(BROKER_REBATE_RATES[broker] || 0);
+  const rebateAmount = Math.round(base * rebateRate * 100) / 100;
+  const creditedAmount = Math.round((base + rebateAmount) * 100) / 100;
+  return { baseAmount: base, rebateRate, rebateAmount, creditedAmount };
+}
+
+function rechargeAmounts(campaign, baseAmount) {
+  return brokerRebateAmounts(campaign?.broker, baseAmount);
+}
+
+function updateRechargeAmountHint() {
+  const hint = $("#rechargeAmountHint");
+  if (!hint) return;
+  const campaign = campaignById($("#rechargeCampaign")?.value) || resolveRechargeAccount($("#rechargeAccountSearch")?.value);
+  const amounts = rechargeAmounts(campaign, $("#rechargeAmount")?.value);
+  if (!campaign) {
+    hint.textContent = "选择账户后自动计算预计到账金额。";
+  } else if (amounts.rebateRate > 0) {
+    hint.textContent = `${campaign.broker} 返点 ${(amounts.rebateRate * 100).toFixed(0)}%，预计到账 ${money(amounts.creditedAmount, 2)}（返点 ${money(amounts.rebateAmount, 2)}）`;
+  } else {
+    hint.textContent = `${campaign.broker || "该账户"}暂无返点，预计到账 ${money(amounts.creditedAmount, 2)}。`;
+  }
+}
+
 function matchCampaignFromReceipt(text) {
   const normalizedText = normalizeReceiptText(text);
   return state.campaigns.find((campaign) => {
@@ -971,6 +1012,7 @@ function renderRecharges() {
   $("#rechargeLedgerTitle").textContent = meta.title;
   $("#rechargeDateHeading").textContent = meta.dateLabel;
   $("#rechargeAccountHeading").textContent = meta.accountLabel;
+  $("#rechargeBrokerHeading").classList.toggle("hidden", activeRechargeLedger !== "payment");
   $("#rechargePayeeHeading").textContent = activeRechargeLedger === "payment" ? "收款方" : "";
   $("#rechargeAmountHeading").textContent = meta.amountLabel;
   $("#addRechargeButton").classList.toggle("hidden", !meta.addLabel);
@@ -985,18 +1027,28 @@ function renderRecharges() {
       : "";
     const actions = activeRechargeLedger !== "pending" ? `<div class="table-actions">${receiptAction}<button class="small-action" data-action="edit-ledger" data-id="${escapeHtml(recharge.id)}">编辑</button><button class="small-action delete" data-action="delete-ledger" data-id="${escapeHtml(recharge.id)}">删除</button></div>` : "—";
     if (activeRechargeLedger === "payment") {
+      const broker = paymentBroker(recharge);
+      const rebate = brokerRebateAmounts(broker, recharge.amount);
+      const rebateDetail = rebate.rebateAmount > 0
+        ? `<span>预计到账 ${money(rebate.creditedAmount, 2)} · 返点 ${money(rebate.rebateAmount, 2)}</span>`
+        : "";
       return `<tr>
         <td>${formatDate(recharge.date)}</td>
         <td>${partyCellHtml(recharge.payer, recharge.payerBank, recharge.payerAccount, campaign)}</td>
         <td>${partyCellHtml(recharge.payee, recharge.payeeBank, recharge.payeeAccount, null)}</td>
-        <td class="number-cell"><strong>${money(recharge.amount, 2)}</strong></td>
+        <td>${broker ? `<span class="broker-tag">${escapeHtml(broker)}</span>` : `<span class="muted-cell">待归属</span>`}</td>
+        <td class="number-cell"><div class="stacked-cell"><strong>${money(recharge.amount, 2)}</strong>${rebateDetail}</div></td>
         <td class="action-cell">${actions}</td>
       </tr>`;
     }
+    const creditedAmount = Number(recharge.amount || 0);
+    const rebateDetail = Number(recharge.rebateAmount || 0) > 0
+      ? `<span>本金 ${money(recharge.baseAmount, 2)} + 返点 ${money(recharge.rebateAmount, 2)}</span>`
+      : "";
     return `<tr>
       <td>${formatDate(recharge.date)}</td>
       <td colspan="2">${campaign ? campaignNameCell(campaign, campaign.account) : `<span>已删除的账户</span>`}</td>
-      <td class="number-cell"><strong>${money(recharge.amount, 2)}</strong></td>
+      <td class="number-cell"><div class="stacked-cell"><strong>${money(creditedAmount, 2)}</strong>${rebateDetail}</div></td>
       <td class="action-cell">${actions}</td>
     </tr>`;
   }).join("");
@@ -1203,7 +1255,8 @@ function openRechargeModal(recharge = null, campaignId = null) {
   $("#rechargeCampaign").value = selectedCampaign.id;
   $("#rechargeAccountSearch").value = rechargeAccountLabel(selectedCampaign);
   $("#rechargeAccountSearch").setCustomValidity("");
-  $("#rechargeAmount").value = recharge?.amount ?? "";
+  $("#rechargeAmount").value = recharge?.baseAmount ?? recharge?.amount ?? "";
+  updateRechargeAmountHint();
   showModal("rechargeModal");
   setTimeout(() => $("#rechargeDate").focus(), 60);
 }
@@ -1307,11 +1360,15 @@ async function handleRechargeSubmit(event) {
   accountInput.setCustomValidity("");
   $("#rechargeCampaign").value = selectedCampaign.id;
   const id = $("#rechargeId").value;
+  const amounts = rechargeAmounts(selectedCampaign, $("#rechargeAmount").value);
   const item = {
     id: id || uid("chg"),
     date: $("#rechargeDate").value,
     campaignId: selectedCampaign.id,
-    amount: Number($("#rechargeAmount").value),
+    baseAmount: amounts.baseAmount,
+    rebateRate: amounts.rebateRate,
+    rebateAmount: amounts.rebateAmount,
+    amount: amounts.creditedAmount,
     recordType: "recharge",
     status: "已充值",
     channel: "",
@@ -1327,23 +1384,37 @@ async function handleRechargeSubmit(event) {
   if (!(await saveState())) return;
   closeModal("rechargeModal");
   renderAll();
-  toast(id ? "充值记录已更新" : "充值记录已保存");
+  toast(amounts.rebateAmount > 0
+    ? `${id ? "充值记录已更新" : "充值记录已保存"}，预计到账 ${money(amounts.creditedAmount, 2)}`
+    : (id ? "充值记录已更新" : "充值记录已保存"));
 }
 
 async function handlePaymentSubmit(event) {
   event.preventDefault();
   const id = $("#paymentId").value;
   const existing = state.recharges.find((item) => item.id === id);
+  const payer = $("#paymentPayer").value.trim();
+  const payerBank = $("#paymentPayerBank").value.trim();
+  const payerAccount = $("#paymentPayerAccount").value.trim();
+  const payee = $("#paymentPayee").value.trim();
+  const payeeBank = $("#paymentPayeeBank").value.trim();
+  const payeeAccount = $("#paymentPayeeAccount").value.trim();
+  const broker = paymentBroker({ payer, payerBank, payee, payeeBank, broker: existing?.broker });
+  const rebate = brokerRebateAmounts(broker, $("#paymentAmount").value);
   const item = {
     id: id || uid("pay"),
     date: $("#paymentDate").value,
     amount: Number($("#paymentAmount").value),
-    payer: $("#paymentPayer").value.trim(),
-    payerBank: $("#paymentPayerBank").value.trim(),
-    payerAccount: $("#paymentPayerAccount").value.trim(),
-    payee: $("#paymentPayee").value.trim(),
-    payeeBank: $("#paymentPayeeBank").value.trim(),
-    payeeAccount: $("#paymentPayeeAccount").value.trim(),
+    payer,
+    payerBank,
+    payerAccount,
+    payee,
+    payeeBank,
+    payeeAccount,
+    broker,
+    rebateRate: rebate.rebateRate,
+    rebateAmount: rebate.rebateAmount,
+    expectedCreditAmount: rebate.creditedAmount,
     recordType: "payment",
     status: "已付款",
     amountCurrency: "CNY",
@@ -1676,7 +1747,9 @@ function bindEvents() {
     const campaign = resolveRechargeAccount(event.target.value);
     $("#rechargeCampaign").value = campaign?.id || "";
     event.target.setCustomValidity("");
+    updateRechargeAmountHint();
   });
+  $("#rechargeAmount").addEventListener("input", updateRechargeAmountHint);
   $("#paymentUploadButton").addEventListener("click", () => $("#paymentImageInput").click());
   $("#paymentImageInput").addEventListener("change", (event) => {
     const [file] = event.target.files;
