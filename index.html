@@ -70,7 +70,7 @@
             </div>
             <div class="header-copy">
               <h1 id="viewTitle">报表端</h1>
-              <p class="eyebrow" id="viewEyebrow">查看充值、消耗与账户余额汇总</p>
+              <p class="eyebrow" id="viewEyebrow">查看云端财务汇总与原始明细</p>
               <p class="cloud-sync-status" id="cloudSyncStatus" data-state="syncing" aria-live="polite">
                 <span class="cloud-status-dot" aria-hidden="true"></span>
                 <span id="cloudSyncText">正在连接云端</span>
@@ -78,7 +78,7 @@
             </div>
           </div>
           <div class="topbar-actions">
-            <div class="date-control" title="看板统计日期">
+            <div class="date-control hidden" title="看板统计日期">
               <span aria-hidden="true">◷</span>
               <input type="date" id="dashboardDate" aria-label="看板统计日期" />
             </div>
@@ -94,7 +94,7 @@
               <div>
                 <p class="section-kicker">数据概览</p>
                 <h2>报表端</h2>
-                <p id="dashboardSummary">报表端数据已清空，展示逻辑调整中。</p>
+                <p id="dashboardSummary">正在读取云端财务数据…</p>
               </div>
               <div class="welcome-actions">
                 <span class="data-mode-badge" id="dataModeBadge">演示数据</span>
@@ -102,11 +102,96 @@
               </div>
             </div>
 
-            <article class="panel">
+            <div class="filter-bar finance-filter-bar" aria-label="财务报表筛选">
+              <label class="finance-filter-field">
+                <span>开始日期</span>
+                <input type="date" id="financeStartDate" />
+              </label>
+              <span class="range-separator">至</span>
+              <label class="finance-filter-field">
+                <span>结束日期</span>
+                <input type="date" id="financeEndDate" />
+              </label>
+              <label class="finance-filter-field finance-account-filter">
+                <span>广告账户</span>
+                <select id="financeAccountFilter" aria-label="筛选广告账户">
+                  <option value="all">全部账户</option>
+                </select>
+              </label>
+              <button class="button button-secondary" type="button" id="exportFinanceButton">导出财务 Excel</button>
+            </div>
+
+            <div class="finance-kpi-grid" aria-label="财务数据汇总">
+              <article class="finance-kpi-card finance-kpi-primary">
+                <span>财务总消耗</span>
+                <strong id="financeTotalSpend">¥0.00</strong>
+                <small>余额总消耗口径</small>
+              </article>
+              <article class="finance-kpi-card">
+                <span>非赠款消耗</span>
+                <strong id="financeNonGrantSpend">¥0.00</strong>
+                <small>现金及非赠款账户</small>
+              </article>
+              <article class="finance-kpi-card">
+                <span>赠款消耗</span>
+                <strong id="financeGiftSpend">¥0.00</strong>
+                <small>赠款账户消耗</small>
+              </article>
+              <article class="finance-kpi-card">
+                <span>覆盖账户</span>
+                <strong id="financeAccountCount">0</strong>
+                <small id="financeRecordCount">0 条财务明细</small>
+              </article>
+            </div>
+
+            <article class="panel finance-panel" id="financeAccountPanel">
+              <div class="panel-header finance-panel-header">
+                <div>
+                  <p class="section-kicker">账户视角</p>
+                  <h3>账户财务汇总</h3>
+                </div>
+                <span class="finance-range-label" id="financeRangeLabel">—</span>
+              </div>
+              <div class="table-scroll finance-table-scroll">
+                <table class="finance-table finance-summary-table">
+                  <thead>
+                    <tr>
+                      <th>广告账户</th>
+                      <th class="number-cell">财务总消耗</th>
+                      <th class="number-cell">非赠款消耗</th>
+                      <th class="number-cell">赠款消耗</th>
+                      <th class="number-cell">最新总余额</th>
+                      <th class="number-cell">非赠款余额</th>
+                      <th class="number-cell">赠款余额</th>
+                      <th>余额日期</th>
+                    </tr>
+                  </thead>
+                  <tbody id="financeAccountSummaryBody"></tbody>
+                </table>
+              </div>
+            </article>
+
+            <article class="panel finance-panel" id="financeDetailPanel">
+              <div class="panel-header finance-panel-header">
+                <div>
+                  <p class="section-kicker">原始数据</p>
+                  <h3>财务明细</h3>
+                </div>
+                <span class="finance-range-label">全部财务字段</span>
+              </div>
+              <div class="table-scroll finance-table-scroll">
+                <table class="finance-table finance-detail-table">
+                  <thead><tr id="financeDetailHead"></tr></thead>
+                  <tbody id="financeDetailBody"></tbody>
+                </table>
+              </div>
+            </article>
+
+            <article class="panel hidden" id="financeEmptyState">
               <div class="empty-state">
                 <div class="empty-icon">∑</div>
-                <h3>报表端调整中</h3>
-                <p>原「充值、消耗与账户余额」汇总展示已下线。余额勾稽逻辑（8月31日余额 + 充值端到账金额 − 消耗 = 财务余额）确定后上线。</p>
+                <h3>当前范围没有财务数据</h3>
+                <p>财务数据会由采集工具同步到云端，调整日期或账户后可重新查看。</p>
               </div>
             </article>
           </section>
@@ -527,6 +612,6 @@
 
     <div class="toast-region" id="toastRegion" aria-live="polite"></div>
     <script src="excel-export.js?v=1.0.0"></script>
-    <script src="app.js?v=2.0.1"></script>
+    <script src="app.js?v=2.1.0"></script>
   </body>
 </html>

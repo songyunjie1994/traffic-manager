@@ -1,7 +1,7 @@
 "use strict";
 
 const STORAGE_KEY = "traffic_manager_data_v1";
-const APP_VERSION = "2.0.1";
+const APP_VERSION = "2.1.0";
 const CLOUD_ROW_ID = 2;
 const RECHARGE_WORKFLOW_VERSION = "2026-08-29-v1";
 // 早期版本会在首次迁移时补建这 6 个手工账户；现在账户全部来自千川采集，
@@ -22,7 +22,7 @@ const CLOUD_CONFIG = Object.freeze({
 });
 const PLATFORMS = ["巨量引擎", "千川", "小红书", "视频号", "快手", "百度", "其他"];
 const VIEW_META = {
-  dashboard: ["查看充值、消耗与账户余额汇总", "报表端"],
+  dashboard: ["查看云端财务汇总与原始明细", "报表端"],
   campaigns: ["管理充值、付款与待付款记录", "充值端"],
   records: ["记录每日消耗和成交数据", "消耗端"],
   accounts: ["维护广告账户与所属投流中介", "账户配置"],
@@ -153,6 +153,7 @@ function createDemoState() {
     campaigns,
     recharges,
     records,
+    financeRecords: [],
     settings: { initializedAt: new Date().toISOString() },
   };
 }
@@ -164,6 +165,7 @@ function emptyState() {
     campaigns: [],
     recharges: [],
     records: [],
+    financeRecords: [],
     settings: { initializedAt: new Date().toISOString() },
   };
 }
@@ -172,16 +174,16 @@ function normalizeState(candidate) {
   if (!candidate || !Array.isArray(candidate.campaigns) || !Array.isArray(candidate.records)) {
     throw new Error("文件不是有效的投流管理系统备份");
   }
-  const { campaigns, recharges, records, settings, demo, version, ...rest } = candidate;
+  const { campaigns, recharges, records, financeRecords, settings, demo, version, ...rest } = candidate;
   return {
     version: APP_VERSION,
     demo: Boolean(demo),
     campaigns: campaigns.map((item) => ({ ...item })),
     recharges: Array.isArray(recharges) ? recharges.map((item) => ({ ...item })) : [],
     records: records.map((item) => ({ ...item })),
+    financeRecords: Array.isArray(financeRecords) ? financeRecords.map((item) => ({ ...item, columns: item?.columns && typeof item.columns === "object" ? { ...item.columns } : {} })) : [],
     settings: settings && typeof settings === "object" ? settings : {},
-    // 云端还有 financeRecords 等本页不渲染的字段：原样带回去，
-    // 否则保存时整份状态回写会把它们冲掉（2026-09-13 财务记录被冲过一次）。
+    // 云端未知字段仍原样带回，避免整份状态回写时冲掉其他采集模块的数据。
     ...rest,
   };
 }
@@ -564,6 +566,16 @@ function renderSelectOptions() {
   const brokerOptions = $("#campaignBrokerOptions");
   if (brokerOptions) brokerOptions.innerHTML = brokers.map((item) => `<option value="${escapeHtml(item)}"></option>`).join("");
 
+  const financeAccountFilter = $("#financeAccountFilter");
+  if (financeAccountFilter) {
+    const current = financeAccountFilter.value;
+    const accounts = [...new Map((state.financeRecords || []).map((item) => [financeAccountKey(item), financeAccountLabel(item)])).entries()]
+      .filter(([key]) => key)
+      .sort((a, b) => a[1].localeCompare(b[1], "zh"));
+    financeAccountFilter.innerHTML = `<option value="all">全部账户</option>${accounts.map(([key, label]) => `<option value="${escapeHtml(key)}">${escapeHtml(label)}</option>`).join("")}`;
+    financeAccountFilter.value = accounts.some(([key]) => key === current) ? current : "all";
+  }
+
   const recordSelect = $("#recordCampaign");
   const rechargeSelect = $("#rechargeCampaign");
   const currentRecordCampaign = recordSelect.value;
@@ -580,11 +592,118 @@ function renderSelectOptions() {
   rechargeSelect.value = state.campaigns.some((item) => item.id === currentRechargeCampaign) ? currentRechargeCampaign : "";
 }
 
+const FINANCE_COLUMN_ORDER = [
+  "余额总消耗(元)", "非赠款消耗(元)", "赠款消耗(元)",
+  "总余额(元)", "非赠款余额(元)", "赠款余额(元)",
+  "总存入(元)", "总转入(元)", "总转出(元)",
+  "共享钱包消耗(元)", "共享赠款消耗", "消返红包消耗(元)", "立减红包消耗(元)",
+];
+
+function financeAccountKey(record) {
+  return String(record?.advertiserId || record?.campaignId || record?.advertiserName || "").trim();
+}
+
+function financeAccountLabel(record) {
+  const campaign = campaignById(record?.campaignId);
+  return String(record?.advertiserName || campaign?.name || campaign?.account || record?.advertiserId || "未命名账户").trim();
+}
+
+function financeNumber(value) {
+  if (typeof value === "number") return Number.isFinite(value) ? value : 0;
+  const normalized = String(value ?? "").replaceAll(",", "").replaceAll("，", "").replace(/[^0-9.\-]/g, "");
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function financeMetric(record, field, columnName) {
+  if (record?.[field] !== undefined && record?.[field] !== null && record?.[field] !== "") return financeNumber(record[field]);
+  return financeNumber(record?.columns?.[columnName]);
+}
+
+function filteredFinanceRecords() {
+  const start = $("#financeStartDate")?.value || "";
+  const end = $("#financeEndDate")?.value || "";
+  const account = $("#financeAccountFilter")?.value || "all";
+  return (state.financeRecords || []).filter((record) => {
+    const date = String(record.date || record.columns?.日期 || "");
+    return (!start || date >= start) && (!end || date <= end) && (account === "all" || financeAccountKey(record) === account);
+  });
+}
+
+function financeDetailColumns(records) {
+  const available = new Set(records.flatMap((record) => Object.keys(record.columns || {})).filter((key) => key && key !== "日期"));
+  return [...FINANCE_COLUMN_ORDER.filter((key) => available.has(key)), ...[...available].filter((key) => !FINANCE_COLUMN_ORDER.includes(key)).sort((a, b) => a.localeCompare(b, "zh"))];
+}
+
+function financeAccountRows(records) {
+  const groups = new Map();
+  records.forEach((record) => {
+    const key = financeAccountKey(record) || financeAccountLabel(record);
+    const row = groups.get(key) || { key, label: financeAccountLabel(record), totalSpend: 0, nonGrantSpend: 0, giftSpend: 0, latest: null };
+    row.totalSpend += financeMetric(record, "balanceTotalSpend", "余额总消耗(元)");
+    row.nonGrantSpend += financeMetric(record, "nonGrantSpend", "非赠款消耗(元)");
+    row.giftSpend += financeMetric(record, "giftSpend", "赠款消耗(元)");
+    if (!row.latest || String(record.date || "") > String(row.latest.date || "")) row.latest = record;
+    groups.set(key, row);
+  });
+  return [...groups.values()].sort((a, b) => b.totalSpend - a.totalSpend || a.label.localeCompare(b.label, "zh"));
+}
+
 function renderDashboard() {
-  // 报表端数据已清空（2026-09-12）：原「充值、消耗与账户余额」汇总展示下线（KPI 卡/趋势图/提醒/账户对账表）。
-  // 待余额勾稽公式（8月31日余额 + 充值端到账金额 − 消耗 = 财务余额）确定后重建渲染。
   const badge = $("#dataModeBadge");
   if (badge) badge.textContent = cloudReady ? (state.demo ? "云端演示数据" : "云端数据") : "本地缓存";
+
+  const allRecords = state.financeRecords || [];
+  const allDates = allRecords.map((record) => String(record.date || record.columns?.日期 || "")).filter(Boolean).sort();
+  if (allDates.length) {
+    if (!$("#financeStartDate").value) $("#financeStartDate").value = allDates[0];
+    if (!$("#financeEndDate").value) $("#financeEndDate").value = allDates[allDates.length - 1];
+  }
+
+  const rows = filteredFinanceRecords().sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")) || financeAccountLabel(a).localeCompare(financeAccountLabel(b), "zh"));
+  const accounts = financeAccountRows(rows);
+  const totalSpend = rows.reduce((total, record) => total + financeMetric(record, "balanceTotalSpend", "余额总消耗(元)"), 0);
+  const nonGrantSpend = rows.reduce((total, record) => total + financeMetric(record, "nonGrantSpend", "非赠款消耗(元)"), 0);
+  const giftSpend = rows.reduce((total, record) => total + financeMetric(record, "giftSpend", "赠款消耗(元)"), 0);
+  const start = $("#financeStartDate").value;
+  const end = $("#financeEndDate").value;
+  const rangeText = start || end ? `${start ? formatDate(start) : "最早"} — ${end ? formatDate(end) : "最新"}` : "全部日期";
+
+  $("#dashboardSummary").textContent = rows.length ? `${rangeText}，共 ${accounts.length} 个账户、${rows.length} 条云端财务明细。` : "当前筛选范围暂无财务数据。";
+  $("#financeRangeLabel").textContent = rangeText;
+  $("#financeTotalSpend").textContent = money(totalSpend, 2);
+  $("#financeNonGrantSpend").textContent = money(nonGrantSpend, 2);
+  $("#financeGiftSpend").textContent = money(giftSpend, 2);
+  $("#financeAccountCount").textContent = number(accounts.length);
+  $("#financeRecordCount").textContent = `${number(rows.length)} 条财务明细`;
+
+  $("#financeAccountSummaryBody").innerHTML = accounts.map((account) => {
+    const latest = account.latest || {};
+    const columns = latest.columns || {};
+    return `<tr>
+      <td class="cell-main"><span class="cell-value"><strong>${escapeHtml(account.label)}</strong>${latest.advertiserId ? `<small>${escapeHtml(latest.advertiserId)}</small>` : ""}</span></td>
+      <td class="number-cell"><span class="cell-value">${money(account.totalSpend, 2)}</span></td>
+      <td class="number-cell"><span class="cell-value">${money(account.nonGrantSpend, 2)}</span></td>
+      <td class="number-cell"><span class="cell-value">${money(account.giftSpend, 2)}</span></td>
+      <td class="number-cell"><span class="cell-value">${money(financeNumber(columns["总余额(元)"]), 2)}</span></td>
+      <td class="number-cell"><span class="cell-value">${money(financeNumber(columns["非赠款余额(元)"]), 2)}</span></td>
+      <td class="number-cell"><span class="cell-value">${money(financeNumber(columns["赠款余额(元)"]), 2)}</span></td>
+      <td><span class="cell-value">${formatDate(latest.date || columns.日期)}</span></td>
+    </tr>`;
+  }).join("");
+
+  const columns = financeDetailColumns(rows);
+  $("#financeDetailHead").innerHTML = `<th>日期</th><th>广告账户</th>${columns.map((column) => `<th class="number-cell">${escapeHtml(column)}</th>`).join("")}`;
+  $("#financeDetailBody").innerHTML = rows.map((record) => `<tr>
+    <td>${formatDate(record.date || record.columns?.日期)}</td>
+    <td class="cell-main"><strong>${escapeHtml(financeAccountLabel(record))}</strong></td>
+    ${columns.map((column) => `<td class="number-cell">${money(financeNumber(record.columns?.[column]), 2)}</td>`).join("")}
+  </tr>`).join("");
+
+  const hasRows = rows.length > 0;
+  $("#financeAccountPanel").classList.toggle("hidden", !hasRows);
+  $("#financeDetailPanel").classList.toggle("hidden", !hasRows);
+  $("#financeEmptyState").classList.toggle("hidden", hasRows);
 }
 
 function trendNote(current, previous, label) {
@@ -1032,7 +1151,7 @@ function renderBackup() {
   const dataBytes = new Blob([JSON.stringify(state)]).size;
   const stats = [
     ["账户/计划", `${state.campaigns.length} 个`],
-    ["充值/消耗", `${state.recharges.length}/${state.records.length} 条`],
+    ["充值/消耗/财务", `${state.recharges.length}/${state.records.length}/${(state.financeRecords || []).length} 条`],
     ["占用空间", dataBytes < 1024 ? `${dataBytes} B` : `${(dataBytes / 1024).toFixed(1)} KB`],
   ];
   $("#storageStats").innerHTML = stats.map(([label, value]) => `<div class="storage-stat"><span>${label}</span><strong>${value}</strong></div>`).join("");
@@ -1442,6 +1561,60 @@ function exportCsv() {
   toast(`已导出 Excel（${groups.length} 行，另附 ${raw.length - 1} 条原始明细）`);
 }
 
+function exportFinanceExcel() {
+  const records = filteredFinanceRecords().sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")) || financeAccountLabel(a).localeCompare(financeAccountLabel(b), "zh"));
+  if (!records.length) {
+    toast("当前范围没有可导出的财务数据");
+    return;
+  }
+  if (!cloudReady && !confirm("云端数据还在加载，现在导出的是浏览器本地缓存，可能不是最新数据。仍要导出吗？")) return;
+  if (!window.TrafficExcel?.downloadWorkbook) {
+    toast("Excel 组件未加载，请刷新页面后重试", "error");
+    return;
+  }
+
+  const accounts = financeAccountRows(records);
+  const columns = financeDetailColumns(records);
+  const summaryRows = [
+    ["广告账户", "财务总消耗", "非赠款消耗", "赠款消耗", "最新总余额", "非赠款余额", "赠款余额", "余额日期"],
+    ...accounts.map((account) => {
+      const latest = account.latest || {};
+      const source = latest.columns || {};
+      return [
+        account.label,
+        Number(account.totalSpend.toFixed(2)),
+        Number(account.nonGrantSpend.toFixed(2)),
+        Number(account.giftSpend.toFixed(2)),
+        Number(financeNumber(source["总余额(元)"]).toFixed(2)),
+        Number(financeNumber(source["非赠款余额(元)"]).toFixed(2)),
+        Number(financeNumber(source["赠款余额(元)"]).toFixed(2)),
+        latest.date || source.日期 || "",
+      ];
+    }),
+    [],
+    [
+      "合计",
+      Number(records.reduce((total, record) => total + financeMetric(record, "balanceTotalSpend", "余额总消耗(元)"), 0).toFixed(2)),
+      Number(records.reduce((total, record) => total + financeMetric(record, "nonGrantSpend", "非赠款消耗(元)"), 0).toFixed(2)),
+      Number(records.reduce((total, record) => total + financeMetric(record, "giftSpend", "赠款消耗(元)"), 0).toFixed(2)),
+      "", "", "", "",
+    ],
+  ];
+  const detailRows = [
+    ["日期", "广告账户", ...columns],
+    ...records.map((record) => [
+      record.date || record.columns?.日期 || "",
+      financeAccountLabel(record),
+      ...columns.map((column) => Number(financeNumber(record.columns?.[column]).toFixed(2))),
+    ]),
+  ];
+  window.TrafficExcel.downloadWorkbook(`财务报表-${localDate()}.xlsx`, [
+    { name: "财务汇总", rows: summaryRows },
+    { name: "财务明细", rows: detailRows },
+  ]);
+  toast(`已导出 ${accounts.length} 个账户、${records.length} 条财务明细`);
+}
+
 function exportRechargeCsv() {
   const rows = filteredRecharges();
   const header = ["充值日期", "计划名称", "平台", "广告账户", "充值金额", "付款渠道", "到账状态", "交易流水号", "经办人", "备注"];
@@ -1484,6 +1657,8 @@ function bindEvents() {
   $$('[data-jump-view]').forEach((button) => button.addEventListener("click", () => switchView(button.dataset.jumpView)));
   $("#menuButton").addEventListener("click", () => $("#sidebar").classList.toggle("open"));
   $("#dashboardDate").addEventListener("change", renderDashboard);
+  ["#financeStartDate", "#financeEndDate", "#financeAccountFilter"].forEach((selector) => $(selector).addEventListener("change", renderDashboard));
+  $("#exportFinanceButton").addEventListener("click", exportFinanceExcel);
   $("#quickRecordButton").addEventListener("click", () => openRecordModal());
   $("#addRechargeButton").addEventListener("click", () => activeRechargeLedger === "payment" ? openPaymentModal() : openRechargeModal());
   $("#addRecordButton").addEventListener("click", () => openRecordModal());
@@ -1605,6 +1780,8 @@ function bindEvents() {
 
 function initialize() {
   $("#dashboardDate").value = localDate();
+  $("#financeStartDate").value = "";
+  $("#financeEndDate").value = "";
   $("#recordStartDate").value = localDate(-6);
   $("#recordEndDate").value = localDate();
   bindEvents();
