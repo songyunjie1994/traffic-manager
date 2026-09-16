@@ -24,7 +24,7 @@ const CLOUD_CONFIG = Object.freeze({
 });
 const PLATFORMS = ["巨量引擎", "千川", "小红书", "视频号", "快手", "百度", "其他"];
 const VIEW_META = {
-  dashboard: ["查看云端财务汇总与原始明细", "报表端"],
+  dashboard: ["查看云端财务汇总与原始明细", "对账端"],
   campaigns: ["管理充值、付款与待付款记录", "充值端"],
   records: ["记录每日消耗和成交数据", "消耗端"],
   accounts: ["维护广告账户与所属投流中介", "账户配置"],
