@@ -9,7 +9,7 @@
       content="以云端数据为主，支持充值登记、消耗录入与投流报表的管理系统。"
     />
     <title>投流管理系统</title>
-    <link rel="stylesheet" href="styles.css?v=1.7.0" />
+    <link rel="stylesheet" href="styles.css?v=1.7.1" />
   </head>
   <body>
     <div class="app-shell">
@@ -45,7 +45,7 @@
           </button>
           <button class="nav-item active" data-view="dashboard">
             <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 19V11h3v8H5Zm5.5 0V5h3v14h-3Zm5.5 0v-6h3v6h-3Z" /></svg></span>
-            报表端
+            对账端
           </button>
         </nav>
 
@@ -69,7 +69,7 @@
               </svg>
             </div>
             <div class="header-copy">
-              <h1 id="viewTitle">报表端</h1>
+              <h1 id="viewTitle">对账端</h1>
               <p class="eyebrow" id="viewEyebrow">查看云端财务汇总与原始明细</p>
               <p class="cloud-sync-status" id="cloudSyncStatus" data-state="syncing" aria-live="polite">
                 <span class="cloud-status-dot" aria-hidden="true"></span>
@@ -93,7 +93,7 @@
             <div class="welcome-row">
               <div>
                 <p class="section-kicker">数据概览</p>
-                <h2>报表端</h2>
+                <h2>对账端</h2>
                 <p id="dashboardSummary">正在读取云端财务数据…</p>
               </div>
               <div class="welcome-actions">
@@ -618,6 +618,6 @@
 
     <div class="toast-region" id="toastRegion" aria-live="polite"></div>
     <script src="excel-export.js?v=1.0.0"></script>
-    <script src="app.js?v=2.2.0"></script>
+    <script src="app.js?v=2.2.1"></script>
   </body>
 </html>
