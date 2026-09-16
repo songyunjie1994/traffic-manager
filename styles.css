@@ -3197,7 +3197,7 @@ tbody tr:hover td {
   }
 }
 
-/* ---------- 报表端：云端财务总览 ---------- */
+/* ---------- 对账端：云端财务总览 ---------- */
 .finance-filter-bar {
   flex-wrap: wrap;
   margin-top: 18px;
