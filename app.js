@@ -1,7 +1,7 @@
 "use strict";
 
 const STORAGE_KEY = "traffic_manager_data_v1";
-const APP_VERSION = "1.5.0";
+const APP_VERSION = "2.0.1";
 const CLOUD_ROW_ID = 2;
 const RECHARGE_WORKFLOW_VERSION = "2026-08-29-v1";
 // 早期版本会在首次迁移时补建这 6 个手工账户；现在账户全部来自千川采集，
@@ -34,6 +34,7 @@ let confirmResolver = null;
 let cloudReady = false;
 let cloudInitializationPromise = null;
 let lastCloudSnapshot = "";
+let lastCloudRawState = null;
 let lastCloudRefreshAt = 0;
 let activeRechargeLedger = "recharge";
 let paymentOcrResult = null;
@@ -271,7 +272,9 @@ async function fetchCloudState() {
   });
   if (!response.ok) throw new Error(`云端读取失败（${response.status}）`);
   const rows = await response.json();
-  return rows[0]?.data ? normalizeState(rows[0].data) : null;
+  if (!rows[0]?.data) return null;
+  lastCloudRawState = structuredClone(rows[0].data);
+  return normalizeState(rows[0].data);
 }
 
 async function createCloudState(candidate) {
@@ -291,16 +294,25 @@ async function createCloudState(candidate) {
   if (response.status === 409) return (await fetchCloudState()) || migrated;
   if (!response.ok) throw new Error(`云端初始化失败（${response.status}）`);
   const rows = await response.json();
+  lastCloudRawState = structuredClone(rows[0]?.data || migrated);
   return rows[0]?.data ? normalizeState(rows[0].data) : migrated;
 }
 
 async function updateCloudState(candidate) {
-  const response = await fetch(`${CLOUD_CONFIG.url}/rest/v1/app_data?id=eq.${CLOUD_ROW_ID}`, {
-    method: "PATCH",
-    headers: cloudHeaders("return=minimal"),
-    body: JSON.stringify({ data: candidate }),
+  if (!lastCloudRawState) throw new Error("缺少云端版本快照，未保存修改");
+  const expected = structuredClone(lastCloudRawState);
+  const response = await fetch(`${CLOUD_CONFIG.url}/rest/v1/rpc/traffic_manager_compare_and_swap`, {
+    method: "POST",
+    headers: cloudHeaders(),
+    body: JSON.stringify({ p_row_id: String(CLOUD_ROW_ID), p_expected: expected, p_next: candidate }),
   });
   if (!response.ok) throw new Error(`云端保存失败（${response.status}）`);
+  if (await response.json() !== true) {
+    const error = new Error("云端数据已被其他端修改，本次未覆盖");
+    error.code = "cloud_conflict";
+    throw error;
+  }
+  lastCloudRawState = structuredClone(candidate);
 }
 
 async function initializeCloud() {
@@ -360,6 +372,20 @@ async function refreshCloudState() {
     setCloudStatus("synced", "云端已同步");
     renderAll();
   } catch (error) {
+    if (error.code === "cloud_conflict") {
+      try {
+        const latest = await fetchCloudState();
+        if (latest) {
+          state = latest;
+          cacheState(state);
+          lastCloudSnapshot = JSON.stringify(state);
+          lastCloudRefreshAt = Date.now();
+          setCloudStatus("synced", "云端已更新");
+          renderAll();
+          return;
+        }
+      } catch (refreshError) { console.error(refreshError); }
+    }
     setCloudStatus("offline", "云端刷新失败");
     console.error(error);
   }
@@ -383,11 +409,24 @@ async function saveState() {
     setCloudStatus("synced", "云端已同步");
     return true;
   } catch (error) {
-    if (lastCloudSnapshot) state = normalizeState(JSON.parse(lastCloudSnapshot));
-    setCloudStatus("offline", "云端保存失败");
+    if (error.code === "cloud_conflict") {
+      let refreshed = false;
+      try {
+        const latest = await fetchCloudState();
+        if (latest) {
+          state = latest;
+          cacheState(state);
+          lastCloudSnapshot = JSON.stringify(state);
+          lastCloudRefreshAt = Date.now();
+          refreshed = true;
+        }
+      } catch (refreshError) { console.error(refreshError); }
+      if (!refreshed && lastCloudSnapshot) state = normalizeState(JSON.parse(lastCloudSnapshot));
+    } else if (lastCloudSnapshot) state = normalizeState(JSON.parse(lastCloudSnapshot));
+    setCloudStatus(error.code === "cloud_conflict" ? "synced" : "offline", error.code === "cloud_conflict" ? "云端已更新" : "云端保存失败");
     console.error(error);
     renderAll();
-    toast("云端保存失败，本次修改已回退", "error");
+    toast(error.code === "cloud_conflict" ? "云端数据已变化，本次修改未覆盖，请重新操作" : "云端保存失败，本次修改已回退", "error");
     return false;
   }
 }
