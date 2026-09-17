@@ -1148,11 +1148,16 @@ function displayRecordGroups(rows) {
     group.netRevenue += metrics.netRevenue;
     groups.set(key, group);
   }
-  return [...groups.values()].map((group) => ({
-    ...group,
-    roi: group.totalSpend > 0 ? group.totalRevenue / group.totalSpend : 0,
-    netRoi: group.totalSpend > 0 ? group.netRevenue / group.totalSpend : 0,
-  }));
+  return [...groups.values()]
+    .map((group) => ({
+      ...group,
+      roi: group.totalSpend > 0 ? group.totalRevenue / group.totalSpend : 0,
+      netRoi: group.totalSpend > 0 ? group.netRevenue / group.totalSpend : 0,
+    }))
+    // 消耗端始终按日期倒序展示；同一天再按达人昵称、抖音号稳定排序。
+    .sort((left, right) => String(right.date || "").localeCompare(String(left.date || ""))
+      || String(left.douyinName || "").localeCompare(String(right.douyinName || ""), "zh")
+      || String(left.douyinNumber || "").localeCompare(String(right.douyinNumber || "")));
 }
 
 function renderRecords() {
