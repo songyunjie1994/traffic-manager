@@ -1,7 +1,7 @@
 "use strict";
 
 const STORAGE_KEY = "traffic_manager_data_v1";
-const APP_VERSION = "2.2.0";
+const APP_VERSION = "2.3.0";
 const CLOUD_ROW_ID = 2;
 const RECHARGE_WORKFLOW_VERSION = "2026-08-29-v1";
 // 早期版本会在首次迁移时补建这 6 个手工账户；现在账户全部来自千川采集，
@@ -538,10 +538,40 @@ function aggregateCampaignRecords(records) {
 function renderAll() {
   renderSelectOptions();
   renderDashboard();
+  renderWallets();
   renderRecharges();
   renderCampaigns();
   renderRecords();
   renderBackup();
+}
+
+// 投流子钱包（2026-09-18）：每个投流中介下挂若干子钱包。
+// shared = 千川共享子钱包（余额取账户页「共享钱包余额」），self = 没有共享钱包、按账户自身余额结算。
+// 数据由 sync-wallets.js 同步进云端 wallets / walletSnapshots 字段；这里只读不写。
+function renderWallets() {
+  const body = $("#walletTableBody");
+  if (!body) return;
+  const wallets = Array.isArray(state.wallets) ? state.wallets : [];
+  $("#walletPanel").classList.toggle("hidden", wallets.length === 0);
+  if (!wallets.length) return;
+  $("#walletUpdatedLabel").textContent = state.walletsUpdatedAt ? `更新于 ${formatDate(String(state.walletsUpdatedAt).slice(0, 10))}` : "—";
+  body.innerHTML = wallets.map((wallet) => {
+    const accounts = Array.isArray(wallet.accounts) ? wallet.accounts : [];
+    const extra = Array.isArray(wallet.noWalletAccounts) ? wallet.noWalletAccounts : [];
+    const names = accounts.map((item) => item.name).filter(Boolean);
+    const accountCell = `<span class="cell-value"><strong>${number(accounts.length)} 个账户</strong><small title="${escapeHtml(names.join("、"))}">${escapeHtml(names.join("、"))}</small>${
+      extra.length ? `<small>无共享钱包：${escapeHtml(extra.map((item) => item.name).join("、"))}</small>` : ""
+    }</span>`;
+    return `<tr>
+      <td class="cell-main"><span class="cell-value"><strong>${escapeHtml(wallet.broker || "—")}</strong></span></td>
+      <td class="cell-main"><span class="cell-value"><strong>${escapeHtml(wallet.name || "—")}</strong>${wallet.walletId ? `<small>${escapeHtml(wallet.walletId)}</small>` : ""}</span></td>
+      <td><span class="cell-value">${wallet.kind === "shared" ? "共享子钱包" : "自身"}</span></td>
+      <td class="cell-main">${accountCell}</td>
+      <td class="number-cell"><span class="cell-value">${wallet.balance === null || wallet.balance === undefined ? "—" : money(wallet.balance, 2)}</span></td>      <td><span class="cell-value">${wallet.balanceDate ? formatDate(wallet.balanceDate) : "—"}</span></td>
+      <td class="number-cell"><span class="cell-value">${money(wallet.spendTotal || 0, 2)}</span></td>
+      <td class="number-cell"><span class="cell-value">${money(wallet.spendToday || 0, 2)}</span></td>
+    </tr>`;
+  }).join("");
 }
 
 function renderSelectOptions() {
@@ -1148,16 +1178,11 @@ function displayRecordGroups(rows) {
     group.netRevenue += metrics.netRevenue;
     groups.set(key, group);
   }
-  return [...groups.values()]
-    .map((group) => ({
-      ...group,
-      roi: group.totalSpend > 0 ? group.totalRevenue / group.totalSpend : 0,
-      netRoi: group.totalSpend > 0 ? group.netRevenue / group.totalSpend : 0,
-    }))
-    // 消耗端始终按日期倒序展示；同一天再按达人昵称、抖音号稳定排序。
-    .sort((left, right) => String(right.date || "").localeCompare(String(left.date || ""))
-      || String(left.douyinName || "").localeCompare(String(right.douyinName || ""), "zh")
-      || String(left.douyinNumber || "").localeCompare(String(right.douyinNumber || "")));
+  return [...groups.values()].map((group) => ({
+    ...group,
+    roi: group.totalSpend > 0 ? group.totalRevenue / group.totalSpend : 0,
+    netRoi: group.totalSpend > 0 ? group.netRevenue / group.totalSpend : 0,
+  }));
 }
 
 function renderRecords() {
