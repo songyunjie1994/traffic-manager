@@ -1,7 +1,7 @@
 "use strict";
 
 const STORAGE_KEY = "traffic_manager_data_v1";
-const APP_VERSION = "2.3.0";
+const APP_VERSION = "2.3.1";
 const CLOUD_ROW_ID = 2;
 const RECHARGE_WORKFLOW_VERSION = "2026-08-29-v1";
 // 早期版本会在首次迁移时补建这 6 个手工账户；现在账户全部来自千川采集，
@@ -559,8 +559,11 @@ function renderWallets() {
     const accounts = Array.isArray(wallet.accounts) ? wallet.accounts : [];
     const extra = Array.isArray(wallet.noWalletAccounts) ? wallet.noWalletAccounts : [];
     const names = accounts.map((item) => item.name).filter(Boolean);
-    const accountCell = `<span class="cell-value"><strong>${number(accounts.length)} 个账户</strong><small title="${escapeHtml(names.join("、"))}">${escapeHtml(names.join("、"))}</small>${
-      extra.length ? `<small>无共享钱包：${escapeHtml(extra.map((item) => item.name).join("、"))}</small>` : ""
+    // 账户名很长（最多 9 个），全列出来会把右侧的余额/消耗列挤出屏幕 —— 只显示前 3 个，完整名单放 title
+    const shownNames = names.slice(0, 3).join("、") + (names.length > 3 ? ` 等 ${names.length} 个` : "");
+    const shownExtra = extra.map((item) => item.name).filter(Boolean);
+    const accountCell = `<span class="cell-value"><strong>${number(accounts.length)} 个账户</strong><small title="${escapeHtml(names.join("、"))}">${escapeHtml(shownNames)}</small>${
+      shownExtra.length ? `<small title="${escapeHtml(shownExtra.join("、"))}">无共享钱包：${escapeHtml(shownExtra.slice(0, 2).join("、"))}${shownExtra.length > 2 ? ` 等 ${shownExtra.length} 个` : ""}</small>` : ""
     }</span>`;
     return `<tr>
       <td class="cell-main"><span class="cell-value"><strong>${escapeHtml(wallet.broker || "—")}</strong></span></td>
