@@ -144,6 +144,33 @@
               </article>
             </div>
 
+            <article class="panel finance-panel" id="walletPanel">
+              <div class="panel-header finance-panel-header">
+                <div>
+                  <p class="section-kicker">投流中介</p>
+                  <h3>投流子钱包</h3>
+                </div>
+                <span class="finance-range-label" id="walletUpdatedLabel">—</span>
+              </div>
+              <div class="table-scroll finance-table-scroll">
+                <table class="finance-table finance-summary-table">
+                  <thead>
+                    <tr>
+                      <th>投流中介</th>
+                      <th>子钱包</th>
+                      <th>类型</th>
+                      <th>挂靠账户</th>
+                      <th class="number-cell">钱包余额</th>
+                      <th>余额日期</th>
+                      <th class="number-cell">区间消耗</th>
+                      <th class="number-cell">今日消耗</th>
+                    </tr>
+                  </thead>
+                  <tbody id="walletTableBody"></tbody>
+                </table>
+              </div>
+            </article>
+
             <article class="panel finance-panel" id="financeAccountPanel">
               <div class="panel-header finance-panel-header">
                 <div>
@@ -618,6 +645,6 @@
 
     <div class="toast-region" id="toastRegion" aria-live="polite"></div>
     <script src="excel-export.js?v=1.0.0"></script>
-    <script src="app.js?v=2.2.2"></script>
+    <script src="app.js?v=2.3.0"></script>
   </body>
 </html>
