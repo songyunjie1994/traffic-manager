@@ -1,7 +1,7 @@
 "use strict";
 
 const STORAGE_KEY = "traffic_manager_data_v1";
-const APP_VERSION = "2.6.2";
+const APP_VERSION = "2.6.3";
 const CLOUD_ROW_ID = 2;
 const RECHARGE_WORKFLOW_VERSION = "2026-08-29-v1";
 // 早期版本会在首次迁移时补建这 6 个手工账户；现在账户全部来自千川采集，
@@ -1183,11 +1183,20 @@ function displayRecordGroups(rows) {
       douyinName: record.douyinName || "",
       douyinNumber: record.douyinNumber || "",
       ids: [],
+      members: [],
       totalSpend: 0,
       totalRevenue: 0,
       netRevenue: 0,
     };
     group.ids.push(record.id);
+    // 合并行也要能编辑：留下每条原始记录的消耗/成交/账户，渲染成"编辑1 / 编辑2"
+    group.members.push({
+      id: record.id,
+      spend: metrics.totalSpend,
+      revenue: metrics.totalRevenue,
+      advertiserId: record.advertiserId || "",
+      campaignId: record.campaignId || "",
+    });
     group.totalSpend += metrics.totalSpend;
     group.totalRevenue += metrics.totalRevenue;
     group.netRevenue += metrics.netRevenue;
@@ -1228,10 +1237,17 @@ function renderRecords() {
     const { totalSpend: spend, totalRevenue: revenue, netRevenue: net, roi, netRoi } = group;
     const merged = group.ids.length > 1;
     // data-label 供手机端把每行折成卡片时显示字段名（PC 端表格不显示）
+    // 合并行也允许编辑：每条原始记录一个按钮（悬停能看到那一条的消耗/成交/账户）
+    const members = Array.isArray(group.members) && group.members.length ? group.members : group.ids.map((id, i) => ({ id, spend: i === 0 ? spend : 0, revenue: i === 0 ? revenue : 0 }));
+    const editButtons = members.map((m, i) => {
+      const label = members.length > 1 ? `编辑${i + 1}` : "编辑";
+      const tip = `第 ${i + 1} 条：消耗 ${money(m.spend, 2)} · 成交 ${money(m.revenue, 2)}${m.advertiserId ? ` · 账户 ${m.advertiserId}` : ""}`;
+      return `<button class="small-action" data-action="edit-record" data-id="${escapeHtml(m.id)}" title="${escapeHtml(tip)}">${label}</button>`;
+    }).join("");
     const actions = merged
-      ? `<span class="merge-badge">合并 ${group.ids.length} 条</span>
+      ? `<span class="merge-badge">合并 ${group.ids.length} 条</span>${editButtons}
          <button class="small-action delete" data-action="delete-record" data-ids="${escapeHtml(group.ids.join(","))}">删除</button>`
-      : `<button class="small-action" data-action="edit-record" data-id="${escapeHtml(group.ids[0])}">编辑</button>
+      : `${editButtons}
          <button class="small-action delete" data-action="delete-record" data-ids="${escapeHtml(group.ids[0])}">删除</button>`;
     return `
       <tr>
