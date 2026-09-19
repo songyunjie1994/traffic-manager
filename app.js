@@ -1,7 +1,7 @@
 "use strict";
 
 const STORAGE_KEY = "traffic_manager_data_v1";
-const APP_VERSION = "2.5.0";
+const APP_VERSION = "2.5.1";
 const CLOUD_ROW_ID = 2;
 const RECHARGE_WORKFLOW_VERSION = "2026-08-29-v1";
 // 早期版本会在首次迁移时补建这 6 个手工账户；现在账户全部来自千川采集，
@@ -579,7 +579,7 @@ function renderWallets() {
       <td class="number-cell"><span class="cell-value">${cell(wallet.periodCredit)}</span></td>
       <td class="number-cell"><span class="cell-value">${cell(wallet.periodSpend)}</span></td>
       <td class="number-cell"><span class="cell-value"><strong>${cell(wallet.balance)}</strong></span></td>
-      <td><span class="cell-value">${wallet.balanceDate ? formatDate(wallet.balanceDate) : "—"}</span></td>
+      <td><span class="cell-value" title="${escapeHtml(wallet.balanceDate || "")}">${wallet.balanceDate ? formatDate(wallet.balanceDate).slice(5) : "—"}</span></td>
       <td class="number-cell"><span class="cell-value">${diffCell}</span></td>
     </tr>`;
   }).join("");
