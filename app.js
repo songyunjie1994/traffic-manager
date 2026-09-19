@@ -1,7 +1,7 @@
 "use strict";
 
 const STORAGE_KEY = "traffic_manager_data_v1";
-const APP_VERSION = "2.5.1";
+const APP_VERSION = "2.6.0";
 const CLOUD_ROW_ID = 2;
 const RECHARGE_WORKFLOW_VERSION = "2026-08-29-v1";
 // 早期版本会在首次迁移时补建这 6 个手工账户；现在账户全部来自千川采集，
@@ -570,9 +570,13 @@ function renderWallets() {
     const diffCell = diff === null || diff === undefined
       ? "—"
       : `<span class="roi-value ${Math.abs(diff) < 0.01 ? "roi-good" : "roi-warn"}">${money(diff, 2)}</span>`;
+    // 实时余额放钱包名下面：它是"今天此刻"的值，和对账口径（截止日收盘）不是一回事
+    const liveLine = wallet.balanceLive === null || wallet.balanceLive === undefined
+      ? ""
+      : `<small title="今天此刻的实际余额（不参与对账等式）">实时 ${money(wallet.balanceLive, 2)}${wallet.liveReadAt ? `（${formatDate(String(wallet.liveReadAt).slice(0, 10))} 读）` : ""}</small>`;
     return `<tr>
       <td class="cell-main"><span class="cell-value"><strong>${escapeHtml(wallet.broker || "—")}</strong></span></td>
-      <td class="cell-main"><span class="cell-value"><strong>${escapeHtml(wallet.name || "—")}</strong>${wallet.walletId ? `<small>${escapeHtml(wallet.walletId)}</small>` : ""}</span></td>
+      <td class="cell-main"><span class="cell-value"><strong>${escapeHtml(wallet.name || "—")}</strong>${wallet.walletId ? `<small>${escapeHtml(wallet.walletId)}</small>` : ""}${liveLine}</span></td>
       <td><span class="cell-value">${wallet.kind === "shared" ? "共享子钱包" : "自身"}</span></td>
       <td class="cell-main">${accountCell}</td>
       <td class="number-cell"><span class="cell-value">${cell(wallet.openingBalance ?? wallet.balanceAug31)}</span></td>
