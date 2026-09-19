@@ -1,7 +1,7 @@
 "use strict";
 
 const STORAGE_KEY = "traffic_manager_data_v1";
-const APP_VERSION = "2.3.1";
+const APP_VERSION = "2.4.0";
 const CLOUD_ROW_ID = 2;
 const RECHARGE_WORKFLOW_VERSION = "2026-08-29-v1";
 // 早期版本会在首次迁移时补建这 6 个手工账户；现在账户全部来自千川采集，
@@ -570,7 +570,9 @@ function renderWallets() {
       <td class="cell-main"><span class="cell-value"><strong>${escapeHtml(wallet.name || "—")}</strong>${wallet.walletId ? `<small>${escapeHtml(wallet.walletId)}</small>` : ""}</span></td>
       <td><span class="cell-value">${wallet.kind === "shared" ? "共享子钱包" : "自身"}</span></td>
       <td class="cell-main">${accountCell}</td>
-      <td class="number-cell"><span class="cell-value">${wallet.balance === null || wallet.balance === undefined ? "—" : money(wallet.balance, 2)}</span></td>      <td><span class="cell-value">${wallet.balanceDate ? formatDate(wallet.balanceDate) : "—"}</span></td>
+      <td class="number-cell"><span class="cell-value">${wallet.balance === null || wallet.balance === undefined ? "—" : money(wallet.balance, 2)}</span></td>
+      <td><span class="cell-value">${wallet.balanceDate ? formatDate(wallet.balanceDate) : "—"}</span></td>
+      <td class="number-cell"><span class="cell-value">${wallet.balanceAug31 === null || wallet.balanceAug31 === undefined ? "—" : money(wallet.balanceAug31, 2)}</span></td>
       <td class="number-cell"><span class="cell-value">${money(wallet.spendTotal || 0, 2)}</span></td>
       <td class="number-cell"><span class="cell-value">${money(wallet.spendToday || 0, 2)}</span></td>
     </tr>`;
