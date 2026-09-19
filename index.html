@@ -149,7 +149,7 @@
                 <div>
                   <p class="section-kicker">投流中介</p>
                   <h3>投流子钱包</h3>
-                  <p style="margin:4px 0 0;color:var(--muted);font-size:11px">期初(8/31) + 期间充值 − 期间消耗 = 当前余额；差额不为 0 就是有笔帐没记上</p>
+                  <p style="margin:4px 0 0;color:var(--muted);font-size:11px">按「已结清的最后一天」对账：期初(8/31) + 期间充值 − 期间消耗 = 截止日收盘余额；差额不为 0 就是有笔帐没记上</p>
                 </div>
                 <span class="finance-range-label" id="walletUpdatedLabel">—</span>
               </div>
@@ -164,9 +164,9 @@
                       <th class="number-cell" title="2026-08-31 的期初余额，锁定不再重算">期初(8/31)</th>
                       <th class="number-cell">期间充值</th>
                       <th class="number-cell">期间消耗</th>
-                      <th class="number-cell">当前余额</th>
-                      <th title="余额读取日期">余额日</th>
-                      <th class="number-cell" title="期初 + 期间充值 − 期间消耗 − 当前余额；0 表示帐完全对上">差额</th>
+                      <th class="number-cell" title="对账截止日（已结清的最后一天）的收盘余额">截止日余额</th>
+                      <th title="对账截止到哪一天（千川日结只到前一天）">截止日</th>
+                      <th class="number-cell" title="期初 + 期间充值 − 期间消耗 − 截止日余额；0 表示帐完全对上">差额</th>
                     </tr>
                   </thead>
                   <tbody id="walletTableBody"></tbody>
@@ -648,6 +648,6 @@
 
     <div class="toast-region" id="toastRegion" aria-live="polite"></div>
     <script src="excel-export.js?v=1.0.0"></script>
-    <script src="app.js?v=2.5.1"></script>
+    <script src="app.js?v=2.6.0"></script>
   </body>
 </html>
