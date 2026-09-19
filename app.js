@@ -1,7 +1,7 @@
 "use strict";
 
 const STORAGE_KEY = "traffic_manager_data_v1";
-const APP_VERSION = "2.6.0";
+const APP_VERSION = "2.6.1";
 const CLOUD_ROW_ID = 2;
 const RECHARGE_WORKFLOW_VERSION = "2026-08-29-v1";
 // 早期版本会在首次迁移时补建这 6 个手工账户；现在账户全部来自千川采集，
