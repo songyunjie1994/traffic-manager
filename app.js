@@ -1,14 +1,14 @@
 "use strict";
 
 const STORAGE_KEY = "traffic_manager_data_v1";
-const APP_VERSION = "2.6.3";
+const APP_VERSION = "2.6.4";
 const CLOUD_ROW_ID = 2;
 const RECHARGE_WORKFLOW_VERSION = "2026-08-29-v1";
 // 早期版本会在首次迁移时补建这 6 个手工账户；现在账户全部来自千川采集，
 // 用户已确认删除，这里留空避免它们被自动重建（2026-09-13）。
 const REQUIRED_ACCOUNT_NAMES = [];
 const BROKERS = Object.freeze(["李杨tina", "李杨tes", "域见未来1", "惠和"]);
-const BROKER_REBATE_RATES = Object.freeze({ "李杨tes": 0.03 });
+const BROKER_REBATE_RATES = Object.freeze({ "李杨tes": 0.03, "惠和": 0.01 });
 const RECHARGE_LEDGER_META = Object.freeze({
   recharge: { title: "充值记录", dateLabel: "充值日期", accountLabel: "充值账户", amountLabel: "到账金额", addLabel: "＋ 添加充值记录" },
   payment: { title: "付款记录", dateLabel: "付款日期", accountLabel: "付款方", amountLabel: "付款金额", addLabel: "＋ 上传付款截图" },
@@ -894,6 +894,7 @@ function paymentBroker(payment) {
   if (BROKERS.includes(payment?.broker)) return payment.broker;
   const parties = normalizeReceiptText([payment?.payer, payment?.payerBank, payment?.payee, payment?.payeeBank].filter(Boolean).join(" "));
   if (parties.includes("yujianfuturehongkonglimited")) return "域见未来1";
+  if (parties.includes("huihehongkonglimited")) return "惠和";   // HUIHE HONGKONG LIMITED → 惠和（用户 2026-09-19 指定）
   if (parties.includes("李杨") && (parties.includes("建设银行") || parties.includes("建行"))) return "李杨tes";
   if (parties.includes("李杨") && (parties.includes("招商银行") || parties.includes("招行"))) return "李杨tina";
   return "";
@@ -1090,9 +1091,13 @@ function renderRecharges() {
     const rebateDetail = Number(recharge.rebateAmount || 0) > 0
       ? `<span>本金 ${money(recharge.baseAmount, 2)} + 返点 ${money(recharge.rebateAmount, 2)}</span>`
       : "";
+    // 从付款记录生成的充值记录没有具体充值账户，这里显示归属中介 + 付款方，别显示成"已删除的账户"
+    const fallbackLabel = recharge.broker
+      ? `<div class="stacked-cell"><strong>${escapeHtml(recharge.broker)}</strong><span>${escapeHtml([recharge.payee || recharge.payer, recharge.sourcePaymentId ? "由付款记录生成" : ""].filter(Boolean).join(" · "))}</span></div>`
+      : "";
     return `<tr>
       <td>${formatDate(recharge.date)}</td>
-      <td colspan="2">${campaign ? campaignNameCell(campaign, campaign.account) : `<span>已删除的账户</span>`}</td>
+      <td colspan="2">${campaign ? campaignNameCell(campaign, campaign.account) : (fallbackLabel || `<span>已删除的账户</span>`)}</td>
       <td class="number-cell"><div class="stacked-cell"><strong>${money(creditedAmount, 2)}</strong>${rebateDetail}</div></td>
       <td class="action-cell">${actions}</td>
     </tr>`;
