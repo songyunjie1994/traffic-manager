@@ -1,7 +1,7 @@
 "use strict";
 
 const STORAGE_KEY = "traffic_manager_data_v1";
-const APP_VERSION = "2.6.1";
+const APP_VERSION = "2.6.2";
 const CLOUD_ROW_ID = 2;
 const RECHARGE_WORKFLOW_VERSION = "2026-08-29-v1";
 // 早期版本会在首次迁移时补建这 6 个手工账户；现在账户全部来自千川采集，
@@ -1193,11 +1193,19 @@ function displayRecordGroups(rows) {
     group.netRevenue += metrics.netRevenue;
     groups.set(key, group);
   }
-  return [...groups.values()].map((group) => ({
-    ...group,
-    roi: group.totalSpend > 0 ? group.totalRevenue / group.totalSpend : 0,
-    netRoi: group.totalSpend > 0 ? group.netRevenue / group.totalSpend : 0,
-  }));
+  // 展示排序（2026-09-20 用户要求）：日期倒序（最新在上）；同一天按整体消耗从大到小，
+  // 消耗相同再按达人昵称，保证顺序稳定不会每次刷新乱跳。
+  return [...groups.values()]
+    .map((group) => ({
+      ...group,
+      roi: group.totalSpend > 0 ? group.totalRevenue / group.totalSpend : 0,
+      netRoi: group.totalSpend > 0 ? group.netRevenue / group.totalSpend : 0,
+    }))
+    .sort((a, b) =>
+      String(b.date || "").localeCompare(String(a.date || ""))
+      || b.totalSpend - a.totalSpend
+      || String(a.douyinName || "").localeCompare(String(b.douyinName || ""), "zh")
+      || String(a.douyinNumber || "").localeCompare(String(b.douyinNumber || "")));
 }
 
 function renderRecords() {
