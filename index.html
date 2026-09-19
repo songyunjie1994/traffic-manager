@@ -149,6 +149,7 @@
                 <div>
                   <p class="section-kicker">投流中介</p>
                   <h3>投流子钱包</h3>
+                  <p style="margin:4px 0 0;color:var(--muted);font-size:11px">期初(8/31) + 期间充值 − 期间消耗 = 当前余额；差额不为 0 就是有笔帐没记上</p>
                 </div>
                 <span class="finance-range-label" id="walletUpdatedLabel">—</span>
               </div>
@@ -160,11 +161,12 @@
                       <th>子钱包</th>
                       <th>类型</th>
                       <th>挂靠账户</th>
-                      <th class="number-cell">钱包余额</th>
+                      <th class="number-cell" title="2026-08-31 的期初余额，锁定不再重算">期初(8/31)</th>
+                      <th class="number-cell">期间充值</th>
+                      <th class="number-cell">期间消耗</th>
+                      <th class="number-cell">当前余额</th>
                       <th>余额日期</th>
-                      <th class="number-cell" title="倒推值：期末余额 + 期间投流消耗 − 期间进钱（付款到账 / 账户转入）">8/31 余额</th>
-                      <th class="number-cell">区间消耗</th>
-                      <th class="number-cell">今日消耗</th>
+                      <th class="number-cell" title="期初 + 期间充值 − 期间消耗 − 当前余额；0 表示帐完全对上">差额</th>
                     </tr>
                   </thead>
                   <tbody id="walletTableBody"></tbody>
@@ -646,6 +648,6 @@
 
     <div class="toast-region" id="toastRegion" aria-live="polite"></div>
     <script src="excel-export.js?v=1.0.0"></script>
-    <script src="app.js?v=2.4.1"></script>
+    <script src="app.js?v=2.5.0"></script>
   </body>
 </html>
