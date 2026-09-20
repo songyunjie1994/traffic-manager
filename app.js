@@ -1,7 +1,7 @@
 "use strict";
 
 const STORAGE_KEY = "traffic_manager_data_v1";
-const APP_VERSION = "2.7.3";
+const APP_VERSION = "2.7.4";
 const CLOUD_ROW_ID = 2;
 const RECHARGE_WORKFLOW_VERSION = "2026-08-29-v1";
 // 早期版本会在首次迁移时补建这 6 个手工账户；现在账户全部来自千川采集，
@@ -371,6 +371,20 @@ async function initializeCloud() {
     toast("云端连接失败，当前仅显示本地缓存，暂时不能修改数据", "error");
     return false;
   }
+}
+
+// 首次连接失败自动重试：这台机器访问云端偶发失败（要靠代理），
+// 之前失败一次就直接停在演示数据上，看着像"数据丢了"。
+async function initializeCloudWithRetry(attempts = 3) {
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    if (await initializeCloud()) return true;
+    if (attempt < attempts) {
+      setCloudStatus("syncing", `云端连接失败，正在重试（${attempt}/${attempts - 1}）`);
+      await new Promise((resolve) => setTimeout(resolve, 4000));
+    }
+  }
+  setCloudStatus("offline", "云端连接失败（可刷新页面重试）");
+  return false;
 }
 
 async function refreshCloudState() {
@@ -1984,7 +1998,7 @@ function initialize() {
   $("#recordEndDate").value = localDate();
   bindEvents();
   renderAll();
-  cloudInitializationPromise = initializeCloud();
+  cloudInitializationPromise = initializeCloudWithRetry();
 }
 
 initialize();
