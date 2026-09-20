@@ -1,7 +1,7 @@
 "use strict";
 
 const STORAGE_KEY = "traffic_manager_data_v1";
-const APP_VERSION = "2.6.4";
+const APP_VERSION = "2.7.0";
 const CLOUD_ROW_ID = 2;
 const RECHARGE_WORKFLOW_VERSION = "2026-08-29-v1";
 // 早期版本会在首次迁移时补建这 6 个手工账户；现在账户全部来自千川采集，
@@ -690,14 +690,16 @@ function financeAccountRows(records) {
   const groups = new Map();
   records.forEach((record) => {
     const key = financeAccountKey(record) || financeAccountLabel(record);
-    const row = groups.get(key) || { key, label: financeAccountLabel(record), totalSpend: 0, nonGrantSpend: 0, giftSpend: 0, latest: null };
+    const row = groups.get(key) || { key, label: financeAccountLabel(record), totalSpend: 0, walletSpend: 0, nonGrantSpend: 0, giftSpend: 0, latest: null };
     row.totalSpend += financeMetric(record, "balanceTotalSpend", "余额总消耗(元)");
+    // 共享子钱包扣的钱在日结里是单独一列，不算在「余额总消耗」里，要单独统计
+    row.walletSpend += financeMetric(record, "sharedWalletSpend", "共享钱包消耗(元)");
     row.nonGrantSpend += financeMetric(record, "nonGrantSpend", "非赠款消耗(元)");
     row.giftSpend += financeMetric(record, "giftSpend", "赠款消耗(元)");
     if (!row.latest || String(record.date || "") > String(row.latest.date || "")) row.latest = record;
     groups.set(key, row);
   });
-  return [...groups.values()].sort((a, b) => b.totalSpend - a.totalSpend || a.label.localeCompare(b.label, "zh"));
+  return [...groups.values()].sort((a, b) => (b.totalSpend + b.walletSpend) - (a.totalSpend + a.walletSpend) || a.label.localeCompare(b.label, "zh"));
 }
 
 function renderDashboard() {
@@ -714,6 +716,8 @@ function renderDashboard() {
   const rows = filteredFinanceRecords().sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")) || financeAccountLabel(a).localeCompare(financeAccountLabel(b), "zh"));
   const accounts = financeAccountRows(rows);
   const totalSpend = rows.reduce((total, record) => total + financeMetric(record, "balanceTotalSpend", "余额总消耗(元)"), 0);
+  // 共享子钱包扣的钱单独一列，不在「余额总消耗」里；真实总消耗 = 账户余额消耗 + 共享钱包消耗
+  const walletSpend = rows.reduce((total, record) => total + financeMetric(record, "sharedWalletSpend", "共享钱包消耗(元)"), 0);
   const nonGrantSpend = rows.reduce((total, record) => total + financeMetric(record, "nonGrantSpend", "非赠款消耗(元)"), 0);
   const giftSpend = rows.reduce((total, record) => total + financeMetric(record, "giftSpend", "赠款消耗(元)"), 0);
   const start = $("#financeStartDate").value;
@@ -722,6 +726,8 @@ function renderDashboard() {
 
   $("#dashboardSummary").textContent = rows.length ? `${rangeText}，共 ${accounts.length} 个账户、${rows.length} 条云端财务明细。` : "当前筛选范围暂无财务数据。";
   $("#financeRangeLabel").textContent = rangeText;
+  $("#financeTrueSpend").textContent = money(totalSpend + walletSpend, 2);
+  $("#financeWalletSpend").textContent = money(walletSpend, 2);
   $("#financeTotalSpend").textContent = money(totalSpend, 2);
   $("#financeNonGrantSpend").textContent = money(nonGrantSpend, 2);
   $("#financeGiftSpend").textContent = money(giftSpend, 2);
@@ -734,6 +740,8 @@ function renderDashboard() {
     return `<tr>
       <td class="cell-main"><span class="cell-value"><strong>${escapeHtml(account.label)}</strong>${latest.advertiserId ? `<small>${escapeHtml(latest.advertiserId)}</small>` : ""}</span></td>
       <td class="number-cell"><span class="cell-value">${money(account.totalSpend, 2)}</span></td>
+      <td class="number-cell"><span class="cell-value">${money(account.walletSpend, 2)}</span></td>
+      <td class="number-cell"><span class="cell-value"><strong>${money(account.totalSpend + account.walletSpend, 2)}</strong></span></td>
       <td class="number-cell"><span class="cell-value">${money(account.nonGrantSpend, 2)}</span></td>
       <td class="number-cell"><span class="cell-value">${money(account.giftSpend, 2)}</span></td>
       <td class="number-cell"><span class="cell-value">${money(financeNumber(columns["总余额(元)"]), 2)}</span></td>
