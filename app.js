@@ -1,7 +1,7 @@
 "use strict";
 
 const STORAGE_KEY = "traffic_manager_data_v1";
-const APP_VERSION = "2.7.1";
+const APP_VERSION = "2.7.2";
 const CLOUD_ROW_ID = 2;
 const RECHARGE_WORKFLOW_VERSION = "2026-08-29-v1";
 // 早期版本会在首次迁移时补建这 6 个手工账户；现在账户全部来自千川采集，
@@ -610,6 +610,14 @@ function renderSelectOptions() {
     select.innerHTML = `<option value="all">${allLabel}</option>${brokers.map((item) => `<option value="${escapeHtml(item)}">${escapeHtml(item)}</option>`).join("")}`;
     select.value = brokers.includes(current) ? current : "all";
   }
+  // 充值端三个页签（充值记录/付款记录/待付款）共用同一个投流中介筛选
+  const rechargeBrokerFilter = $("#rechargeBrokerFilter");
+  if (rechargeBrokerFilter) {
+    const current = rechargeBrokerFilter.value;
+    rechargeBrokerFilter.innerHTML = `<option value="all">全部投流中介</option>${brokers.map((item) => `<option value="${escapeHtml(item)}">${escapeHtml(item)}</option>`).join("")}`;
+    rechargeBrokerFilter.value = brokers.includes(current) ? current : "all";
+  }
+
   const campaignBroker = $("#campaignBroker");
   if (campaignBroker) {
     const current = campaignBroker.value;
