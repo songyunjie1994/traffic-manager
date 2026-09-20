@@ -1,7 +1,7 @@
 "use strict";
 
 const STORAGE_KEY = "traffic_manager_data_v1";
-const APP_VERSION = "2.7.0";
+const APP_VERSION = "2.7.1";
 const CLOUD_ROW_ID = 2;
 const RECHARGE_WORKFLOW_VERSION = "2026-08-29-v1";
 // 早期版本会在首次迁移时补建这 6 个手工账户；现在账户全部来自千川采集，
@@ -887,10 +887,19 @@ function campaignNameCell(campaign, subtitle) {
   </div>`;
 }
 
+// 记录归属哪个投流中介：付款记录按收款方/银行规则判定，充值/待付款用记录上的 broker（没写就看账户）
+function rechargeBrokerOf(record) {
+  if ((record.recordType || "recharge") === "payment") return paymentBroker(record) || record.broker || "";
+  return record.broker || campaignById(record.campaignId)?.broker || "";
+}
+
 function filteredRecharges() {
+  const brokerFilter = $("#rechargeBrokerFilter")?.value || "all";
   return state.recharges.filter((recharge) => {
     const recordType = recharge.recordType || "recharge";
-    return recordType === activeRechargeLedger;
+    if (recordType !== activeRechargeLedger) return false;
+    if (brokerFilter !== "all" && rechargeBrokerOf(recharge) !== brokerFilter) return false;
+    return true;
   }).sort((a, b) => b.date.localeCompare(a.date) || String(b.createdAt).localeCompare(String(a.createdAt)));
 }
 
@@ -1103,13 +1112,24 @@ function renderRecharges() {
     const fallbackLabel = recharge.broker
       ? `<div class="stacked-cell"><strong>${escapeHtml(recharge.broker)}</strong><span>${escapeHtml([recharge.payee || recharge.payer, recharge.sourcePaymentId ? "由付款记录生成" : ""].filter(Boolean).join(" · "))}</span></div>`
       : "";
+    const broker = rechargeBrokerOf(recharge);
     return `<tr>
       <td>${formatDate(recharge.date)}</td>
-      <td colspan="2">${campaign ? campaignNameCell(campaign, campaign.account) : (fallbackLabel || `<span>已删除的账户</span>`)}</td>
+      <td>${campaign ? campaignNameCell(campaign, campaign.account) : (fallbackLabel || `<span>—</span>`)}</td>
+      <td>${partyCellHtml(recharge.payee, recharge.payeeBank, "", null)}</td>
+      <td>${broker ? `<span class="broker-tag">${escapeHtml(broker)}</span>` : `<span class="muted-cell">待归属</span>`}</td>
       <td class="number-cell"><div class="stacked-cell"><strong>${money(creditedAmount, 2)}</strong>${rebateDetail}</div></td>
       <td class="action-cell">${actions}</td>
     </tr>`;
   }).join("");
+  {
+    const summary = $("#rechargeFilterSummary");
+    if (summary) {
+      const total = rows.reduce((a, r) => a + Number(r.amount || 0), 0);
+      const brokerValue = $("#rechargeBrokerFilter")?.value || "all";
+      summary.textContent = `${brokerValue === "all" ? "全部中介" : brokerValue}：${rows.length} 条 · 合计 ${money(total, 2)}`;
+    }
+  }
   $("#rechargeEmptyState").classList.toggle("hidden", rows.length > 0);
   $("#rechargeEmptyTitle").textContent = `还没有${meta.title}`;
   $("#rechargeEmptyCopy").textContent = activeRechargeLedger === "recharge"
@@ -1825,6 +1845,8 @@ function bindEvents() {
     activeRechargeLedger = button.dataset.rechargeLedger;
     renderRecharges();
   }));
+  // 充值端三个页签共用同一个投流中介筛选
+  $("#rechargeBrokerFilter")?.addEventListener("change", () => renderRecharges());
   $("#rechargeAccountSearch").addEventListener("input", (event) => {
     const campaign = resolveRechargeAccount(event.target.value);
     $("#rechargeCampaign").value = campaign?.id || "";
