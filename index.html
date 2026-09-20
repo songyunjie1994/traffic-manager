@@ -251,6 +251,16 @@
                 <button class="button button-primary" id="addRechargeButton">＋ 添加充值记录</button>
               </div>
 
+              <div class="filter-bar ledger-filter-bar">
+                <label class="finance-filter-field">
+                  <span>投流中介</span>
+                  <select id="rechargeBrokerFilter" aria-label="按投流中介筛选">
+                    <option value="all">全部投流中介</option>
+                  </select>
+                </label>
+                <span class="muted-cell" id="rechargeFilterSummary"></span>
+              </div>
+
               <div class="table-scroll">
                 <table>
                   <thead>
@@ -258,7 +268,7 @@
                       <th id="rechargeDateHeading">充值日期</th>
                       <th id="rechargeAccountHeading">充值账户</th>
                       <th id="rechargePayeeHeading">收款方</th>
-                      <th class="hidden" id="rechargeBrokerHeading">投流中介</th>
+                      <th id="rechargeBrokerHeading">投流中介</th>
                       <th class="number-cell" id="rechargeAmountHeading">充值金额</th>
                       <th class="action-cell">操作</th>
                     </tr>
@@ -660,6 +670,6 @@
 
     <div class="toast-region" id="toastRegion" aria-live="polite"></div>
     <script src="excel-export.js?v=1.0.0"></script>
-    <script src="app.js?v=2.7.0"></script>
+    <script src="app.js?v=2.7.1"></script>
   </body>
 </html>
