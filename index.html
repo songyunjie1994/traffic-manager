@@ -123,7 +123,17 @@
 
             <div class="finance-kpi-grid" aria-label="财务数据汇总">
               <article class="finance-kpi-card finance-kpi-primary">
-                <span>财务总消耗</span>
+                <span>总消耗</span>
+                <strong id="financeTrueSpend">¥0.00</strong>
+                <small>账户余额 + 共享钱包</small>
+              </article>
+              <article class="finance-kpi-card">
+                <span>共享钱包消耗</span>
+                <strong id="financeWalletSpend">¥0.00</strong>
+                <small>从共享子钱包扣的钱</small>
+              </article>
+              <article class="finance-kpi-card">
+                <span>账户余额消耗</span>
                 <strong id="financeTotalSpend">¥0.00</strong>
                 <small>余额总消耗口径</small>
               </article>
@@ -187,7 +197,9 @@
                   <thead>
                     <tr>
                       <th>广告账户</th>
-                      <th class="number-cell">财务总消耗</th>
+                      <th class="number-cell">账户余额消耗</th>
+                      <th class="number-cell">共享钱包消耗</th>
+                      <th class="number-cell">合计消耗</th>
                       <th class="number-cell">非赠款消耗</th>
                       <th class="number-cell">赠款消耗</th>
                       <th class="number-cell">最新总余额</th>
@@ -648,6 +660,6 @@
 
     <div class="toast-region" id="toastRegion" aria-live="polite"></div>
     <script src="excel-export.js?v=1.0.0"></script>
-    <script src="app.js?v=2.6.4"></script>
+    <script src="app.js?v=2.7.0"></script>
   </body>
 </html>
