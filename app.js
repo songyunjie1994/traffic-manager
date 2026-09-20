@@ -1,7 +1,7 @@
 "use strict";
 
 const STORAGE_KEY = "traffic_manager_data_v1";
-const APP_VERSION = "2.7.2";
+const APP_VERSION = "2.7.3";
 const CLOUD_ROW_ID = 2;
 const RECHARGE_WORKFLOW_VERSION = "2026-08-29-v1";
 // 早期版本会在首次迁移时补建这 6 个手工账户；现在账户全部来自千川采集，
@@ -9,6 +9,19 @@ const RECHARGE_WORKFLOW_VERSION = "2026-08-29-v1";
 const REQUIRED_ACCOUNT_NAMES = [];
 const BROKERS = Object.freeze(["李杨tina", "李杨tes", "域见未来1", "惠和"]);
 const BROKER_REBATE_RATES = Object.freeze({ "李杨tes": 0.03, "惠和": 0.01 });
+// 投流中介名单：常量只是兜底，实际以云端数据里出现过的为准（账户的 broker、钱包的 broker），
+// 这样以后新增中介不用改代码；返点率同样优先取钱包数据里的 rebate。
+function brokerList() {
+  const set = new Set(BROKERS);
+  for (const campaign of state.campaigns || []) if (campaign?.broker) set.add(campaign.broker);
+  for (const wallet of state.wallets || []) if (wallet?.broker) set.add(wallet.broker);
+  return [...set];
+}
+function brokerRebateRate(broker) {
+  const wallet = (state.wallets || []).find((w) => w.broker === broker && w.rebate !== undefined && w.rebate !== null);
+  if (wallet) return Number(wallet.rebate) || 0;
+  return Number(BROKER_REBATE_RATES[broker] || 0);
+}
 const RECHARGE_LEDGER_META = Object.freeze({
   recharge: { title: "充值记录", dateLabel: "充值日期", accountLabel: "充值账户", amountLabel: "到账金额", addLabel: "＋ 添加充值记录" },
   payment: { title: "付款记录", dateLabel: "付款日期", accountLabel: "付款方", amountLabel: "付款金额", addLabel: "＋ 上传付款截图" },
@@ -602,7 +615,7 @@ function renderSelectOptions() {
   });
 
   // 投流中介是固定业务口径，账户页、消耗端和编辑表单共用同一份名单。
-  const brokers = [...BROKERS];
+  const brokers = brokerList();
   for (const [selector, allLabel] of [["#campaignBrokerFilter", "全部投流中介"], ["#recordBrokerFilter", "全部投流中介"]]) {
     const select = $(selector);
     if (!select) continue;
@@ -916,7 +929,7 @@ function normalizeReceiptText(value) {
 }
 
 function paymentBroker(payment) {
-  if (BROKERS.includes(payment?.broker)) return payment.broker;
+  if (brokerList().includes(payment?.broker)) return payment.broker;
   const parties = normalizeReceiptText([payment?.payer, payment?.payerBank, payment?.payee, payment?.payeeBank].filter(Boolean).join(" "));
   if (parties.includes("yujianfuturehongkonglimited")) return "域见未来1";
   if (parties.includes("huihehongkonglimited")) return "惠和";   // HUIHE HONGKONG LIMITED → 惠和（用户 2026-09-19 指定）
@@ -927,7 +940,7 @@ function paymentBroker(payment) {
 
 function brokerRebateAmounts(broker, baseAmount) {
   const base = Math.max(0, Number(baseAmount || 0));
-  const rebateRate = Number(BROKER_REBATE_RATES[broker] || 0);
+  const rebateRate = brokerRebateRate(broker);
   const rebateAmount = Math.round(base * rebateRate * 100) / 100;
   const creditedAmount = Math.round((base + rebateAmount) * 100) / 100;
   return { baseAmount: base, rebateRate, rebateAmount, creditedAmount };
