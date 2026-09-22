@@ -1,7 +1,7 @@
 "use strict";
 
 const STORAGE_KEY = "traffic_manager_data_v1";
-const APP_VERSION = "2.7.4";
+const APP_VERSION = "2.7.5";
 const CLOUD_ROW_ID = 2;
 const RECHARGE_WORKFLOW_VERSION = "2026-08-29-v1";
 // 早期版本会在首次迁移时补建这 6 个手工账户；现在账户全部来自千川采集，
@@ -601,17 +601,18 @@ function renderWallets() {
     const liveLine = wallet.balanceLive === null || wallet.balanceLive === undefined
       ? ""
       : `<small title="今天此刻的实际余额（不参与对账等式）">实时 ${money(wallet.balanceLive, 2)}${wallet.liveReadAt ? `（${formatDate(String(wallet.liveReadAt).slice(0, 10))} 读）` : ""}</small>`;
+    // data-label 供手机端把每行折成卡片时显示字段名（PC 端表格不显示）
     return `<tr>
-      <td class="cell-main"><span class="cell-value"><strong>${escapeHtml(wallet.broker || "—")}</strong></span></td>
-      <td class="cell-main"><span class="cell-value"><strong>${escapeHtml(wallet.name || "—")}</strong>${wallet.walletId ? `<small>${escapeHtml(wallet.walletId)}</small>` : ""}${liveLine}</span></td>
-      <td><span class="cell-value">${wallet.kind === "shared" ? "共享子钱包" : "自身"}</span></td>
-      <td class="cell-main">${accountCell}</td>
-      <td class="number-cell"><span class="cell-value">${cell(wallet.openingBalance ?? wallet.balanceAug31)}</span></td>
-      <td class="number-cell"><span class="cell-value">${cell(wallet.periodCredit)}</span></td>
-      <td class="number-cell"><span class="cell-value">${cell(wallet.periodSpend)}</span></td>
-      <td class="number-cell"><span class="cell-value"><strong>${cell(wallet.balance)}</strong></span></td>
-      <td><span class="cell-value" title="${escapeHtml(wallet.balanceDate || "")}">${wallet.balanceDate ? formatDate(wallet.balanceDate).slice(5) : "—"}</span></td>
-      <td class="number-cell"><span class="cell-value">${diffCell}</span></td>
+      <td data-label="投流中介" class="cell-main"><span class="cell-value"><strong>${escapeHtml(wallet.broker || "—")}</strong></span></td>
+      <td data-label="子钱包" class="cell-main"><span class="cell-value"><strong>${escapeHtml(wallet.name || "—")}</strong>${wallet.walletId ? `<small>${escapeHtml(wallet.walletId)}</small>` : ""}${liveLine}</span></td>
+      <td data-label="类型"><span class="cell-value">${wallet.kind === "shared" ? "共享子钱包" : "自身"}</span></td>
+      <td data-label="挂靠账户" class="cell-main">${accountCell}</td>
+      <td data-label="期初(8/31)" class="number-cell"><span class="cell-value">${cell(wallet.openingBalance ?? wallet.balanceAug31)}</span></td>
+      <td data-label="期间充值" class="number-cell"><span class="cell-value">${cell(wallet.periodCredit)}</span></td>
+      <td data-label="期间消耗" class="number-cell"><span class="cell-value">${cell(wallet.periodSpend)}</span></td>
+      <td data-label="截止日余额" class="number-cell"><span class="cell-value"><strong>${cell(wallet.balance)}</strong></span></td>
+      <td data-label="截止日"><span class="cell-value" title="${escapeHtml(wallet.balanceDate || "")}">${wallet.balanceDate ? formatDate(wallet.balanceDate).slice(5) : "—"}</span></td>
+      <td data-label="差额" class="number-cell"><span class="cell-value">${diffCell}</span></td>
     </tr>`;
   }).join("");
 }
@@ -772,17 +773,18 @@ function renderDashboard() {
   $("#financeAccountSummaryBody").innerHTML = accounts.map((account) => {
     const latest = account.latest || {};
     const columns = latest.columns || {};
+    // data-label 供手机端折卡片显示字段名
     return `<tr>
-      <td class="cell-main"><span class="cell-value"><strong>${escapeHtml(account.label)}</strong>${latest.advertiserId ? `<small>${escapeHtml(latest.advertiserId)}</small>` : ""}</span></td>
-      <td class="number-cell"><span class="cell-value">${money(account.totalSpend, 2)}</span></td>
-      <td class="number-cell"><span class="cell-value">${money(account.walletSpend, 2)}</span></td>
-      <td class="number-cell"><span class="cell-value"><strong>${money(account.totalSpend + account.walletSpend, 2)}</strong></span></td>
-      <td class="number-cell"><span class="cell-value">${money(account.nonGrantSpend, 2)}</span></td>
-      <td class="number-cell"><span class="cell-value">${money(account.giftSpend, 2)}</span></td>
-      <td class="number-cell"><span class="cell-value">${money(financeNumber(columns["总余额(元)"]), 2)}</span></td>
-      <td class="number-cell"><span class="cell-value">${money(financeNumber(columns["非赠款余额(元)"]), 2)}</span></td>
-      <td class="number-cell"><span class="cell-value">${money(financeNumber(columns["赠款余额(元)"]), 2)}</span></td>
-      <td><span class="cell-value">${formatDate(latest.date || columns.日期)}</span></td>
+      <td data-label="广告账户" class="cell-main"><span class="cell-value"><strong>${escapeHtml(account.label)}</strong>${latest.advertiserId ? `<small>${escapeHtml(latest.advertiserId)}</small>` : ""}</span></td>
+      <td data-label="账户余额消耗" class="number-cell"><span class="cell-value">${money(account.totalSpend, 2)}</span></td>
+      <td data-label="共享钱包消耗" class="number-cell"><span class="cell-value">${money(account.walletSpend, 2)}</span></td>
+      <td data-label="合计消耗" class="number-cell"><span class="cell-value"><strong>${money(account.totalSpend + account.walletSpend, 2)}</strong></span></td>
+      <td data-label="非赠款消耗" class="number-cell"><span class="cell-value">${money(account.nonGrantSpend, 2)}</span></td>
+      <td data-label="赠款消耗" class="number-cell"><span class="cell-value">${money(account.giftSpend, 2)}</span></td>
+      <td data-label="最新总余额" class="number-cell"><span class="cell-value">${money(financeNumber(columns["总余额(元)"]), 2)}</span></td>
+      <td data-label="非赠款余额" class="number-cell"><span class="cell-value">${money(financeNumber(columns["非赠款余额(元)"]), 2)}</span></td>
+      <td data-label="赠款余额" class="number-cell"><span class="cell-value">${money(financeNumber(columns["赠款余额(元)"]), 2)}</span></td>
+      <td data-label="余额日期"><span class="cell-value">${formatDate(latest.date || columns.日期)}</span></td>
     </tr>`;
   }).join("");
 
@@ -1041,6 +1043,10 @@ async function callPaymentRecognition(dataUrl) {
 // 查看已保存的付款凭证（图片存在 Supabase 私有空间，按路径取回）
 async function showPaymentReceiptImage(imagePath) {
   if (!imagePath) return;
+  // 图片从私有空间拉回来要几秒：先开弹窗显示加载态，别让用户以为按钮没反应
+  $("#receiptImage").removeAttribute("src");
+  $("#receiptImageModal").classList.add("is-loading");
+  showModal("receiptImageModal");
   try {
     const response = await fetch(ZHIPU_VISION_CONFIG.url, {
       method: "POST",
@@ -1055,9 +1061,11 @@ async function showPaymentReceiptImage(imagePath) {
     if (receiptImageObjectUrl) URL.revokeObjectURL(receiptImageObjectUrl);
     receiptImageObjectUrl = URL.createObjectURL(blob);
     $("#receiptImage").src = receiptImageObjectUrl;
-    showModal("receiptImageModal");
   } catch (error) {
     toast(error.message || "凭证图片读取失败", "error");
+    closeModal("receiptImageModal");
+  } finally {
+    $("#receiptImageModal").classList.remove("is-loading");
   }
 }
 
@@ -1110,8 +1118,9 @@ function renderRecharges() {
   $("#rechargeLedgerTitle").textContent = meta.title;
   $("#rechargeDateHeading").textContent = meta.dateLabel;
   $("#rechargeAccountHeading").textContent = meta.accountLabel;
-  $("#rechargeBrokerHeading").classList.toggle("hidden", activeRechargeLedger !== "payment");
-  $("#rechargePayeeHeading").textContent = activeRechargeLedger === "payment" ? "收款方" : "";
+  // 三个页签的行都输出「收款方 + 投流中介」两格，列头必须始终显示，否则表头和数据错一列
+  $("#rechargeBrokerHeading").classList.remove("hidden");
+  $("#rechargePayeeHeading").textContent = "收款方";
   $("#rechargeAmountHeading").textContent = meta.amountLabel;
   $("#addRechargeButton").classList.toggle("hidden", !meta.addLabel);
   $("#addRechargeButton").textContent = meta.addLabel;
@@ -1131,12 +1140,12 @@ function renderRecharges() {
         ? `<span>预计到账 ${money(rebate.creditedAmount, 2)} · 返点 ${money(rebate.rebateAmount, 2)}</span>`
         : "";
       return `<tr>
-        <td>${formatDate(recharge.date)}</td>
-        <td>${partyCellHtml(recharge.payer, recharge.payerBank, recharge.payerAccount, campaign)}</td>
-        <td>${partyCellHtml(recharge.payee, recharge.payeeBank, recharge.payeeAccount, null)}</td>
-        <td>${broker ? `<span class="broker-tag">${escapeHtml(broker)}</span>` : `<span class="muted-cell">待归属</span>`}</td>
-        <td class="number-cell"><div class="stacked-cell"><strong>${money(recharge.amount, 2)}</strong>${rebateDetail}</div></td>
-        <td class="action-cell">${actions}</td>
+        <td data-label="${meta.dateLabel}">${formatDate(recharge.date)}</td>
+        <td data-label="${meta.accountLabel}">${partyCellHtml(recharge.payer, recharge.payerBank, recharge.payerAccount, campaign)}</td>
+        <td data-label="收款方">${partyCellHtml(recharge.payee, recharge.payeeBank, recharge.payeeAccount, null)}</td>
+        <td data-label="投流中介">${broker ? `<span class="broker-tag">${escapeHtml(broker)}</span>` : `<span class="muted-cell">待归属</span>`}</td>
+        <td data-label="${meta.amountLabel}" class="number-cell"><div class="stacked-cell"><strong>${money(recharge.amount, 2)}</strong>${rebateDetail}</div></td>
+        <td data-label="操作" class="action-cell">${actions}</td>
       </tr>`;
     }
     const creditedAmount = Number(recharge.amount || 0);
@@ -1149,12 +1158,12 @@ function renderRecharges() {
       : "";
     const broker = rechargeBrokerOf(recharge);
     return `<tr>
-      <td>${formatDate(recharge.date)}</td>
-      <td>${campaign ? campaignNameCell(campaign, campaign.account) : (fallbackLabel || `<span>—</span>`)}</td>
-      <td>${partyCellHtml(recharge.payee, recharge.payeeBank, "", null)}</td>
-      <td>${broker ? `<span class="broker-tag">${escapeHtml(broker)}</span>` : `<span class="muted-cell">待归属</span>`}</td>
-      <td class="number-cell"><div class="stacked-cell"><strong>${money(creditedAmount, 2)}</strong>${rebateDetail}</div></td>
-      <td class="action-cell">${actions}</td>
+      <td data-label="${meta.dateLabel}">${formatDate(recharge.date)}</td>
+      <td data-label="${meta.accountLabel}">${campaign ? campaignNameCell(campaign, campaign.account) : (fallbackLabel || `<span>—</span>`)}</td>
+      <td data-label="收款方">${partyCellHtml(recharge.payee, recharge.payeeBank, "", null)}</td>
+      <td data-label="投流中介">${broker ? `<span class="broker-tag">${escapeHtml(broker)}</span>` : `<span class="muted-cell">待归属</span>`}</td>
+      <td data-label="${meta.amountLabel}" class="number-cell"><div class="stacked-cell"><strong>${money(creditedAmount, 2)}</strong>${rebateDetail}</div></td>
+      <td data-label="操作" class="action-cell">${actions}</td>
     </tr>`;
   }).join("");
   {
@@ -1312,15 +1321,16 @@ function renderRecords() {
       const tip = `第 ${i + 1} 条：消耗 ${money(m.spend, 2)} · 成交 ${money(m.revenue, 2)}${m.advertiserId ? ` · 账户 ${m.advertiserId}` : ""}`;
       return `<button class="small-action" data-action="edit-record" data-id="${escapeHtml(m.id)}" title="${escapeHtml(tip)}">${label}</button>`;
     }).join("");
+    // 「合并 N 条」是行的元信息，放昵称格；放操作格会把按钮挤成竖排（操作列在固定布局里不加宽）
     const actions = merged
-      ? `<span class="merge-badge">合并 ${group.ids.length} 条</span>${editButtons}
+      ? `${editButtons}
          <button class="small-action delete" data-action="delete-record" data-ids="${escapeHtml(group.ids.join(","))}">删除</button>`
       : `${editButtons}
          <button class="small-action delete" data-action="delete-record" data-ids="${escapeHtml(group.ids[0])}">删除</button>`;
     return `
       <tr>
         <td data-label="日期"><span class="cell-value">${formatDate(group.date)}</span></td>
-        <td data-label="达人昵称" class="cell-main"><span class="cell-value">${escapeHtml(group.douyinName || "—")}</span></td>
+        <td data-label="达人昵称" class="cell-main"><span class="cell-value">${escapeHtml(group.douyinName || "—")}${merged ? `<span class="merge-badge">合并 ${group.ids.length} 条</span>` : ""}</span></td>
         <td data-label="抖音号"><span class="cell-value">${escapeHtml(group.douyinNumber || "—")}</span></td>
         <td data-label="整体ROI" class="number-cell"><span class="cell-value"><span class="roi-value ${roi >= 1 ? "roi-good" : "roi-warn"}">${roi.toFixed(2)}</span></span></td>
         <td data-label="整体消耗" class="number-cell"><span class="cell-value">${money(spend, 2)}</span></td>
@@ -1422,6 +1432,11 @@ function openRecordModal(record = null, campaignId = null) {
   if (!state.campaigns.length) {
     toast("请先新建一个投流计划", "error");
     switchView("campaigns");
+    return;
+  }
+  // 云端没连上时 state 里还是演示计划，录进去也保存不了——先拦下来
+  if (!cloudReady) {
+    toast("云端数据还在连接中，连上后再录入", "error");
     return;
   }
   $("#recordForm").reset();
