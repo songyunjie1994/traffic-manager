@@ -9,7 +9,7 @@
       content="以云端数据为主，支持充值登记、消耗录入与投流报表的管理系统。"
     />
     <title>投流管理系统</title>
-    <link rel="stylesheet" href="styles.css?v=1.7.1" />
+    <link rel="stylesheet" href="styles.css?v=1.7.2" />
   </head>
   <body>
     <div class="app-shell">
@@ -159,11 +159,11 @@
                 <div>
                   <p class="section-kicker">投流中介</p>
                   <h3>投流子钱包</h3>
-                  <p style="margin:4px 0 0;color:var(--muted);font-size:11px">自有钱包（惠和/域见）按「已结清的最后一天」对账；共享子钱包（tes/tina）按实时对账——白天的差额就是当天还没入账的在途消耗，夜里消耗停下后归零</p>
+                  <p style="margin:4px 0 0;color:var(--muted);font-size:12px;line-height:1.6">自有钱包（惠和/域见）按「已结清的最后一天」对账；共享子钱包（tes/tina）按实时对账——白天的差额就是当天还没入账的在途消耗，夜里消耗停下后归零</p>
                 </div>
                 <span class="finance-range-label" id="walletUpdatedLabel">—</span>
               </div>
-              <div class="table-scroll finance-table-scroll">
+              <div class="table-scroll finance-table-scroll" data-fold="cards">
                 <table class="finance-table finance-summary-table">
                   <thead>
                     <tr>
@@ -192,7 +192,7 @@
                 </div>
                 <span class="finance-range-label" id="financeRangeLabel">—</span>
               </div>
-              <div class="table-scroll finance-table-scroll">
+              <div class="table-scroll finance-table-scroll" data-fold="cards">
                 <table class="finance-table finance-summary-table">
                   <thead>
                     <tr>
@@ -261,7 +261,7 @@
                 <span class="muted-cell" id="rechargeFilterSummary"></span>
               </div>
 
-              <div class="table-scroll">
+              <div class="table-scroll" data-fold="cards">
                 <table>
                   <thead>
                     <tr>
@@ -670,6 +670,6 @@
 
     <div class="toast-region" id="toastRegion" aria-live="polite"></div>
     <script src="excel-export.js?v=1.0.0"></script>
-    <script src="app.js?v=2.7.4"></script>
+    <script src="app.js?v=2.7.5"></script>
   </body>
 </html>
