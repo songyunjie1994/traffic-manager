@@ -2735,11 +2735,6 @@ tbody tr:hover td {
   text-align: right;
 }
 
-/* 固定布局下操作列要显式给宽：合并行有 编辑1/编辑2/删除 三个按钮，不够宽会竖着堆 */
-.records-table th.action-cell {
-  width: 150px;
-}
-
 .records-table .table-actions {
   flex-wrap: wrap;
   justify-content: flex-end;
@@ -3120,7 +3115,8 @@ tbody tr:hover td {
   .records-table th:nth-child(1) { width: 106px; }
   .records-table th:nth-child(2) { width: 24%; }
   .records-table th:nth-child(3) { width: 150px; }
-  .records-table th:nth-child(9) { width: 104px; }
+  /* 操作列要装下合并行的 编辑1/编辑2/删除 三个按钮，窄了会竖着堆 */
+  .records-table th:nth-child(9) { width: 154px; }
 
   .records-table td {
     padding: 11px 10px;
