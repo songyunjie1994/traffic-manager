@@ -3101,7 +3101,8 @@ tbody tr:hover td {
 
   .records-table {
     table-layout: fixed;
-    min-width: 0;
+    /* 九列的最低限度：窗口再窄也保住金额列不折行——宁可整表横滑（表头已吸顶） */
+    min-width: 1100px;
   }
 
   .records-table thead th,
@@ -3112,14 +3113,19 @@ tbody tr:hover td {
     background: #f8fafc;
   }
 
-  .records-table th:nth-child(1) { width: 106px; }
-  .records-table th:nth-child(2) { width: 24%; }
-  .records-table th:nth-child(3) { width: 150px; }
+  .records-table th:nth-child(1) { width: 96px; }
+  .records-table th:nth-child(2) { width: 21%; }
+  .records-table th:nth-child(3) { width: 118px; }
   /* 操作列要装下合并行的 编辑1/编辑2/删除 三个按钮，窄了会竖着堆 */
   .records-table th:nth-child(9) { width: 154px; }
 
   .records-table td {
     padding: 11px 10px;
+  }
+
+  /* 金额永不折行：宁可溢出也不出「¥1,807.4/6」这种断数字 */
+  .records-table td.number-cell {
+    white-space: nowrap;
   }
 
   .records-table td.cell-main {
