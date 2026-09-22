@@ -3284,6 +3284,7 @@ tbody tr:hover td {
   .table-scroll[data-fold] td {
     display: block;
     width: 100%;
+    min-width: 0;
   }
 
   .table-scroll[data-fold] thead {
@@ -3505,7 +3506,7 @@ tbody tr:hover td {
 
 .finance-table th,
 .finance-table td {
-  padding: 12px 14px;
+  padding: 12px 11px;
 }
 
 .finance-table td.cell-main strong,
