@@ -2,7 +2,7 @@
   --paper: #f3f5f9;
   --paper-deep: #e9ecf3;
   --ink: #242739;
-  --muted: #7a8093;
+  --muted: #64748b;
   --line: #dfe3ec;
   --white: #ffffff;
   --pine: #5747e8;
@@ -748,7 +748,7 @@ tbody tr:hover td { background: rgba(216, 240, 122, 0.08); }
 .campaign-name strong,
 .stacked-cell strong { font-size: 12px; }
 .campaign-name span,
-.stacked-cell span { margin-top: 3px; color: var(--muted); font-size: 10px; }
+.stacked-cell span { margin-top: 3px; color: var(--muted); font-size: 11px; }
 
 .status-badge {
   display: inline-flex;
@@ -889,7 +889,7 @@ tbody tr:hover td { background: rgba(216, 240, 122, 0.08); }
 
 .summary-chip span,
 .summary-chip strong { display: block; }
-.summary-chip span { color: var(--muted); font-size: 10px; }
+.summary-chip span { color: var(--muted); font-size: 11px; }
 .summary-chip strong { margin-top: 5px; font-family: Georgia, serif; font-size: 19px; }
 
 .backup-grid {
@@ -944,7 +944,7 @@ tbody tr:hover td { background: rgba(216, 240, 122, 0.08); }
 
 .storage-stat span,
 .storage-stat strong { display: block; text-align: right; }
-.storage-stat span { color: var(--muted); font-size: 10px; }
+.storage-stat span { color: var(--muted); font-size: 11px; }
 .storage-stat strong { margin-top: 5px; font-family: Georgia, serif; font-size: 21px; }
 
 .modal-backdrop,
@@ -1674,9 +1674,9 @@ body::after {
 
 .nav-list {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 0;
-  width: min(100%, 520px);
+  width: 100%;
   margin: 0 auto;
   padding: 0;
 }
@@ -2157,7 +2157,7 @@ body::after {
 }
 
 .compact-ledger-view {
-  width: min(100%, 820px);
+  width: min(100%, 1080px);
   margin: 0 auto;
 }
 
@@ -2183,6 +2183,43 @@ body::after {
 
 .ledger-panel table {
   min-width: 560px;
+}
+
+/* 账户名/收付款方可能很长（英文公司名+银行）——限宽省略，金额和操作列才不会被挤出可视区 */
+.ledger-panel .campaign-name {
+  max-width: 270px;
+}
+
+.ledger-panel .campaign-name > div {
+  min-width: 0;
+}
+
+.ledger-panel .campaign-name strong,
+.ledger-panel .campaign-name span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ledger-panel .stacked-cell {
+  max-width: 270px;
+}
+
+.ledger-panel .stacked-cell strong,
+.ledger-panel .stacked-cell span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ledger-panel .number-cell .stacked-cell {
+  max-width: 170px;
+}
+
+.ledger-panel .number-cell .stacked-cell span {
+  white-space: normal;
 }
 
 .field-hint {
@@ -2661,10 +2698,12 @@ tbody tr:hover td {
 }
 
 /* 合并行标记：同一天同达人的多条记录（不同账户/口径）合并展示时提示条数 */
-.merge-badge {  display: inline-flex;
+.merge-badge {
+  display: inline-flex;
   align-items: center;
   padding: 3px 8px;
-  margin-right: 8px;
+  margin: 0 0 0 8px;
+  vertical-align: middle;
   color: #5d50dd;
   background: #eeecff;
   border-radius: 999px;
@@ -2694,6 +2733,11 @@ tbody tr:hover td {
 
 .records-table .action-cell {
   text-align: right;
+}
+
+/* 固定布局下操作列要显式给宽：合并行有 编辑1/编辑2/删除 三个按钮，不够宽会竖着堆 */
+.records-table th.action-cell {
+  width: 150px;
 }
 
 .records-table .table-actions {
@@ -2757,6 +2801,38 @@ tbody tr:hover td {
   max-width: 100%;
   height: auto;
   object-fit: contain;
+}
+
+/* 凭证图从私有空间拉取要几秒：先显示转圈，避免用户以为按钮没反应 */
+#receiptImageModal.is-loading .receipt-image-frame {
+  min-height: 320px;
+  gap: 12px;
+}
+
+#receiptImageModal.is-loading #receiptImage {
+  display: none;
+}
+
+#receiptImageModal.is-loading .receipt-image-frame::before {
+  grid-area: 1 / 1;
+  width: 26px;
+  height: 26px;
+  content: "";
+  border: 3px solid #c7d2fe;
+  border-top-color: var(--reference-primary);
+  border-radius: 50%;
+  animation: receipt-spin 0.8s linear infinite;
+}
+
+#receiptImageModal.is-loading .receipt-image-frame::after {
+  grid-area: 2 / 1;
+  content: "正在加载凭证…";
+  color: var(--reference-muted);
+  font-size: 13px;
+}
+
+@keyframes receipt-spin {
+  to { transform: rotate(360deg); }
 }
 
 @media (max-width: 720px) {
@@ -3190,10 +3266,108 @@ tbody tr:hover td {
     font-size: 12.5px;
   }
 
-  /* 手机端其他明细表保持可横向滑动，不挤压 */
-  .ledger-panel .table-scroll,
-  .panel .table-scroll:not(.records-table) {
+  /* 手机端其他明细表（财务明细等）保持可横向滑动，不挤压 */
+  .ledger-panel .table-scroll:not([data-fold]),
+  .panel .table-scroll:not(.records-table):not([data-fold]) {
     overflow-x: auto;
+  }
+
+  /* ===== 折叠成卡片：投流子钱包 / 账户财务汇总 / 充值端账本 =====
+     这三张表在手机上要横滑两三屏才能看到金额，改成一卡一行：字段名在左、数值在右 */
+  .table-scroll[data-fold] {
+    overflow: visible;
+  }
+
+  .table-scroll[data-fold] table,
+  .table-scroll[data-fold] tbody,
+  .table-scroll[data-fold] tr,
+  .table-scroll[data-fold] td {
+    display: block;
+    width: 100%;
+  }
+
+  .table-scroll[data-fold] thead {
+    display: none;
+  }
+
+  .table-scroll[data-fold] tbody tr {
+    margin-bottom: 11px;
+    padding: 12px 14px;
+    background: #ffffff;
+    border: 1px solid var(--reference-border);
+    border-radius: 14px;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
+  }
+
+  .table-scroll[data-fold] td {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 14px;
+    padding: 7px 0;
+    border-bottom: 1px dashed #eef2f7;
+    text-align: left !important;
+    white-space: normal;
+    word-break: break-word;
+  }
+
+  .table-scroll[data-fold] td::before {
+    content: attr(data-label);
+    flex: 0 0 auto;
+    color: var(--reference-muted);
+    font-size: 12px;
+    font-weight: 600;
+  }
+
+  .table-scroll[data-fold] td.cell-main {
+    display: block;
+    padding: 2px 0 9px;
+  }
+
+  .table-scroll[data-fold] td.cell-main::before {
+    display: none;
+  }
+
+  .table-scroll[data-fold] td:last-child {
+    padding-bottom: 2px;
+    border-bottom: 0;
+  }
+
+  .table-scroll[data-fold] td .cell-value,
+  .table-scroll[data-fold] td .stacked-cell,
+  .table-scroll[data-fold] td .campaign-name {
+    margin-left: auto;
+    min-width: 0;
+    text-align: right;
+  }
+
+  .table-scroll[data-fold] td.cell-main .cell-value {
+    margin-left: 0;
+    text-align: left;
+  }
+
+  .table-scroll[data-fold] td .cell-value small,
+  .table-scroll[data-fold] td .stacked-cell strong,
+  .table-scroll[data-fold] td .stacked-cell span {
+    display: block;
+    text-align: right;
+  }
+
+  .table-scroll[data-fold] td.cell-main .cell-value small {
+    text-align: left;
+  }
+
+  .table-scroll[data-fold] .table-actions {
+    width: auto;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 6px;
+  }
+
+  .table-scroll[data-fold] .small-action {
+    min-height: 40px;
+    padding: 8px 14px;
+    font-size: 12.5px;
   }
 }
 
@@ -3212,7 +3386,7 @@ tbody tr:hover td {
 
 .finance-filter-field > span {
   color: var(--muted);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 800;
 }
 
@@ -3226,7 +3400,7 @@ tbody tr:hover td {
 
 .finance-kpi-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 14px;
   margin: 14px 0;
 }
@@ -3260,7 +3434,7 @@ tbody tr:hover td {
 
 .finance-kpi-card > span {
   color: var(--muted);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 800;
 }
 
@@ -3278,7 +3452,7 @@ tbody tr:hover td {
 .finance-kpi-card > small {
   margin-top: 9px;
   color: var(--muted);
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .finance-kpi-primary {
@@ -3342,7 +3516,7 @@ tbody tr:hover td {
 .finance-table td.cell-main small {
   margin-top: 3px;
   color: var(--muted);
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .finance-table .number-cell {
