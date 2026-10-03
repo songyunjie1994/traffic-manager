@@ -9,7 +9,7 @@
       content="以云端数据为主，支持充值登记、消耗录入与投流报表的管理系统。"
     />
     <title>投流管理系统</title>
-    <link rel="stylesheet" href="styles.css?v=1.7.3" />
+    <link rel="stylesheet" href="styles.css?v=1.7.4" />
   </head>
   <body>
     <div class="app-shell">
@@ -119,6 +119,7 @@
                 </select>
               </label>
               <button class="button button-secondary" type="button" id="exportFinanceButton">导出财务 Excel</button>
+              <button class="button button-secondary" type="button" id="refreshFinanceButton">刷新财务</button>
             </div>
 
             <div class="finance-kpi-grid" aria-label="财务数据汇总">
@@ -159,7 +160,7 @@
                 <div>
                   <p class="section-kicker">投流中介</p>
                   <h3>投流子钱包</h3>
-                  <p style="margin:4px 0 0;color:var(--muted);font-size:12px;line-height:1.6">自有钱包（惠和/域见）按「已结清的最后一天」对账；共享子钱包（tes/tina）按实时对账——白天的差额就是当天还没入账的在途消耗，夜里消耗停下后归零</p>
+                  <p class="wallet-sync-notice" id="walletSyncNotice" aria-live="polite">日结汇总随云端采集更新；共享钱包快照单独标注读取时间，未核验的差额不按零处理。</p>
                 </div>
                 <span class="finance-range-label" id="walletUpdatedLabel">—</span>
               </div>
@@ -172,11 +173,11 @@
                       <th>类型</th>
                       <th>挂靠账户</th>
                       <th class="number-cell" title="2026-08-31 的期初余额，锁定不再重算">期初(8/31)</th>
-                      <th class="number-cell">期间充值</th>
-                      <th class="number-cell">期间消耗</th>
-                      <th class="number-cell" title="对账截止日（已结清的最后一天）的收盘余额">截止日余额</th>
-                      <th title="对账截止到哪一天（千川日结只到前一天）">截止日</th>
-                      <th class="number-cell" title="期初 + 期间充值 − 期间消耗 − 截止日余额；0 表示帐完全对上">差额</th>
+                      <th class="number-cell" title="自有账户：总存入（含赠款）+ 总转入 − 总转出；共享钱包流水单独核验">日结净入金</th>
+                      <th class="number-cell" title="按钱包挂靠账户的实际日结行汇总；未采范围不补零">已采日结消耗</th>
+                      <th class="number-cell" title="自有账户为同一天的日结余额；共享钱包为注明时间的余额快照">日结/快照余额</th>
+                      <th title="实际日结汇总截止日期，不是钱包快照日期">日结截止</th>
+                      <th class="number-cell" title="仅日期、账户、入金、消耗和余额完整且口径一致时核算差额，否则待核验">差额</th>
                     </tr>
                   </thead>
                   <tbody id="walletTableBody"></tbody>
@@ -670,6 +671,7 @@
 
     <div class="toast-region" id="toastRegion" aria-live="polite"></div>
     <script src="excel-export.js?v=1.0.0"></script>
-    <script src="app.js?v=2.7.5"></script>
+    <script src="wallet-summary.js?v=1.0.0"></script>
+    <script src="app.js?v=2.7.6"></script>
   </body>
 </html>

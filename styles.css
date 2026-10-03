@@ -779,6 +779,9 @@ tbody tr:hover td { background: rgba(216, 240, 122, 0.08); }
 
 .roi-good { color: #276a55; }
 .roi-warn { color: #c25234; }
+.wallet-stale, .wallet-pending { color: #9a4d20; }
+.wallet-sync-notice { margin: 4px 0 0; color: var(--muted); font-size: 12px; line-height: 1.6; max-width: 760px; }
+#walletTableBody .cell-value small { white-space: normal; overflow-wrap: anywhere; }
 
 .table-actions {
   display: inline-flex;

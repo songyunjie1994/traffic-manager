@@ -1,7 +1,7 @@
 "use strict";
 
 const STORAGE_KEY = "traffic_manager_data_v1";
-const APP_VERSION = "2.7.5";
+const APP_VERSION = "2.7.6";
 const CLOUD_ROW_ID = 2;
 const RECHARGE_WORKFLOW_VERSION = "2026-08-29-v1";
 // 早期版本会在首次迁移时补建这 6 个手工账户；现在账户全部来自千川采集，
@@ -51,6 +51,10 @@ let cloudInitializationPromise = null;
 let lastCloudSnapshot = "";
 let lastCloudRawState = null;
 let lastCloudRefreshAt = 0;
+let cloudRefreshInFlight = false;
+let cloudSaveInFlight = false;
+let cloudInitializationFinished = false;
+const financeDateSelection = { startTouched: false, endTouched: false };
 let activeRechargeLedger = "recharge";
 let paymentOcrResult = null;
 let receiptImageObjectUrl = "";
@@ -282,16 +286,23 @@ function cloudHeaders(prefer = "") {
   return headers;
 }
 
-async function fetchCloudState() {
+async function readCloudDocument() {
   const response = await fetch(`${CLOUD_CONFIG.url}/rest/v1/app_data?select=data&id=eq.${CLOUD_ROW_ID}`, {
     headers: cloudHeaders(),
     cache: "no-store",
+    signal: AbortSignal.timeout(15000),
   });
   if (!response.ok) throw new Error(`云端读取失败（${response.status}）`);
   const rows = await response.json();
   if (!rows[0]?.data) return null;
-  lastCloudRawState = structuredClone(rows[0].data);
-  return normalizeState(rows[0].data);
+  return rows[0].data;
+}
+
+async function fetchCloudState() {
+  const raw = await readCloudDocument();
+  if (!raw) return null;
+  lastCloudRawState = structuredClone(raw);
+  return normalizeState(raw);
 }
 
 async function createCloudState(candidate) {
@@ -388,37 +399,39 @@ async function initializeCloudWithRetry(attempts = 3) {
 }
 
 async function refreshCloudState() {
-  if (!cloudReady || Date.now() - lastCloudRefreshAt < 15000) return;
+  if (!cloudInitializationFinished || cloudRefreshInFlight || cloudSaveInFlight || Date.now() - lastCloudRefreshAt < 15000) return;
   if ($$(".modal-backdrop:not(.hidden), .confirm-backdrop:not(.hidden)").length) return;
+  cloudRefreshInFlight = true;
+  const previousSnapshot = lastCloudSnapshot;
   setCloudStatus("syncing", "正在刷新云端");
   try {
-    const cloudState = await fetchCloudState();
-    if (!cloudState || cloudState.settings?.bootstrapPending) return;
-    const migration = migrateRechargeWorkflow(cloudState);
-    state = migration.state;
-    if (migration.changed) await updateCloudState(state);
+    const raw = await readCloudDocument();
+    if (!raw || raw.settings?.bootstrapPending) throw new Error("云端业务数据尚未就绪，未覆盖本地状态");
+    // A read finishing after an editor opened or a save started must not replace
+    // that editor's state or its CAS base. Passive refresh never writes to cloud.
+    if (cloudSaveInFlight || lastCloudSnapshot !== previousSnapshot
+      || $$(".modal-backdrop:not(.hidden), .confirm-backdrop:not(.hidden)").length) {
+      setCloudStatus(cloudReady ? "synced" : "offline", cloudReady ? "云端已同步" : "云端连接失败");
+      return;
+    }
+    const cloudState = normalizeState(raw);
+    lastCloudRawState = structuredClone(raw);
+    state = cloudState;
+    cloudReady = true;
     cacheState(state);
     lastCloudSnapshot = JSON.stringify(state);
     lastCloudRefreshAt = Date.now();
     setCloudStatus("synced", "云端已同步");
     renderAll();
   } catch (error) {
-    if (error.code === "cloud_conflict") {
-      try {
-        const latest = await fetchCloudState();
-        if (latest) {
-          state = latest;
-          cacheState(state);
-          lastCloudSnapshot = JSON.stringify(state);
-          lastCloudRefreshAt = Date.now();
-          setCloudStatus("synced", "云端已更新");
-          renderAll();
-          return;
-        }
-      } catch (refreshError) { console.error(refreshError); }
-    }
+    cloudReady = false;
     setCloudStatus("offline", "云端刷新失败");
     console.error(error);
+    const badge = $("#dataModeBadge");
+    if (badge) badge.textContent = "本地缓存";
+    renderWallets();
+  } finally {
+    cloudRefreshInFlight = false;
   }
 }
 
@@ -432,6 +445,7 @@ async function saveState() {
   }
 
   setCloudStatus("syncing", "正在同步云端");
+  cloudSaveInFlight = true;
   try {
     await updateCloudState(state);
     cacheState(state);
@@ -459,6 +473,8 @@ async function saveState() {
     renderAll();
     toast(error.code === "cloud_conflict" ? "云端数据已变化，本次修改未覆盖，请重新操作" : "云端保存失败，本次修改已回退", "error");
     return false;
+  } finally {
+    cloudSaveInFlight = false;
   }
 }
 
@@ -574,15 +590,18 @@ function renderAll() {
 
 // 投流子钱包（2026-09-18）：每个投流中介下挂若干子钱包。
 // shared = 千川共享子钱包（余额取账户页「共享钱包余额」），self = 没有共享钱包、按账户自身余额结算。
-// 数据由 sync-wallets.js 同步进云端 wallets / walletSnapshots 字段；这里只读不写。
+// 汇总直接投影最新 financeRecords；钱包快照独立标注时间，绝不反推实时余额。
 function renderWallets() {
   const body = $("#walletTableBody");
   if (!body) return;
-  const wallets = Array.isArray(state.wallets) ? state.wallets : [];
-  $("#walletPanel").classList.toggle("hidden", wallets.length === 0);
-  if (!wallets.length) return;
-  $("#walletUpdatedLabel").textContent = state.walletsUpdatedAt ? `更新于 ${formatDate(String(state.walletsUpdatedAt).slice(0, 10))}` : "—";
-  body.innerHTML = wallets.map((wallet) => {
+  const summaries = TrafficWalletSummary.projectWallets(state, { offline: !cloudReady });
+  $("#walletPanel").classList.toggle("hidden", summaries.length === 0);
+  if (!summaries.length) return;
+  const latestDay = summaries[0].endDate;
+  $("#walletUpdatedLabel").textContent = `${cloudReady ? "云端日结" : "缓存日结"} ${latestDay ? formatDate(latestDay) : "未采到"}；钱包档案 ${state.walletsUpdatedAt ? formatDate(String(state.walletsUpdatedAt).slice(0, 10)) : "未更新"}`;
+  $("#walletSyncNotice").textContent = `${cloudReady ? `云端读回：${new Date(lastCloudRefreshAt).toLocaleString("zh-CN", { timeZone: "Asia/Shanghai", hour12: false })}。页面每 60 秒自动刷新。` : "云端未连接，当前仅显示缓存，不作为最新结果。"} 钱包汇总按各自期初至最新日结计算，不随上方明细筛选缩短；共享钱包旧余额不参与新日期差额。`;
+  body.innerHTML = summaries.map((summary) => {
+    const wallet = summary.wallet;
     const accounts = Array.isArray(wallet.accounts) ? wallet.accounts : [];
     const extra = Array.isArray(wallet.noWalletAccounts) ? wallet.noWalletAccounts : [];
     const names = accounts.map((item) => item.name).filter(Boolean);
@@ -593,26 +612,32 @@ function renderWallets() {
       extra.length ? `<small>无共享钱包 ${extra.length} 个</small>` : ""
     }</span>`;
     const cell = (v, decimals = 2) => (v === null || v === undefined ? "—" : money(v, decimals));
-    const diff = wallet.difference;
+    const diff = summary.difference;
     const diffCell = diff === null || diff === undefined
-      ? "—"
+      ? `<span class="wallet-pending">待核验</span>`
       : `<span class="roi-value ${Math.abs(diff) < 0.01 ? "roi-good" : "roi-warn"}">${money(diff, 2)}</span>`;
-    // 实时余额放钱包名下面：它是"今天此刻"的值，和对账口径（截止日收盘）不是一回事
-    const liveLine = wallet.balanceLive === null || wallet.balanceLive === undefined
-      ? ""
-      : `<small title="今天此刻的实际余额（不参与对账等式）">实时 ${money(wallet.balanceLive, 2)}${wallet.liveReadAt ? `（${formatDate(String(wallet.liveReadAt).slice(0, 10))} 读）` : ""}</small>`;
+    const stamp = summary.balanceReadAt ? new Date(summary.balanceReadAt).toLocaleString("zh-CN", { timeZone: "Asia/Shanghai", hour12: false }) : "读取时间未提供";
+    const balanceLabel = summary.balanceStatus === "daily" ? "已采同日日结余额"
+      : summary.balanceStatus === "recent" ? "近期钱包快照"
+        : summary.balanceStatus === "stale" ? "旧钱包快照（已过期）" : "余额未采到";
+    const liveLine = `<small class="${summary.balanceStatus === "stale" ? "wallet-stale" : ""}">${escapeHtml(balanceLabel)}${summary.balance === null ? "" : ` ${cell(summary.balance)}`}<br>${escapeHtml(stamp)}</small>`;
+    const coverage = `<small>日结已采 ${summary.coveredAccountCount}/${summary.accountCount} 个账户，${summary.recordCount} 条</small>`;
+    const range = summary.startDate && summary.endDate ? `${formatDate(summary.startDate)}—${formatDate(summary.endDate)}` : "范围未核验";
+    const historicalCredit = wallet.kind === "shared" && TrafficWalletSummary.amount(wallet.periodCredit) !== null
+      ? `<small>旧档案入金 ${cell(wallet.periodCredit)}（${state.walletsUpdatedAt ? formatDate(String(state.walletsUpdatedAt).slice(0, 10)) : "日期未知"}）</small>` : "";
+    const warning = `<small class="wallet-pending">${escapeHtml(summary.messages.join("；"))}</small>`;
     // data-label 供手机端把每行折成卡片时显示字段名（PC 端表格不显示）
     return `<tr>
       <td data-label="投流中介" class="cell-main"><span class="cell-value"><strong>${escapeHtml(wallet.broker || "—")}</strong></span></td>
       <td data-label="子钱包" class="cell-main"><span class="cell-value"><strong>${escapeHtml(wallet.name || "—")}</strong>${wallet.walletId ? `<small>${escapeHtml(wallet.walletId)}</small>` : ""}${liveLine}</span></td>
       <td data-label="类型"><span class="cell-value">${wallet.kind === "shared" ? "共享子钱包" : "自身"}</span></td>
-      <td data-label="挂靠账户" class="cell-main">${accountCell}</td>
+      <td data-label="挂靠账户" class="cell-main">${accountCell}${coverage}</td>
       <td data-label="期初(8/31)" class="number-cell"><span class="cell-value">${cell(wallet.openingBalance ?? wallet.balanceAug31)}</span></td>
-      <td data-label="期间充值" class="number-cell"><span class="cell-value">${cell(wallet.periodCredit)}</span></td>
-      <td data-label="期间消耗" class="number-cell"><span class="cell-value">${cell(wallet.periodSpend)}</span></td>
-      <td data-label="截止日余额" class="number-cell"><span class="cell-value"><strong>${cell(wallet.balance)}</strong></span></td>
-      <td data-label="截止日"><span class="cell-value" title="${escapeHtml(wallet.balanceDate || "")}">${wallet.balanceDate ? formatDate(wallet.balanceDate).slice(5) : "—"}</span></td>
-      <td data-label="差额" class="number-cell"><span class="cell-value">${diffCell}</span></td>
+      <td data-label="日结净入金" class="number-cell"><span class="cell-value">${cell(summary.periodCredit)}${historicalCredit}</span></td>
+      <td data-label="已采日结消耗" class="number-cell"><span class="cell-value">${cell(summary.periodSpend)}<small>${escapeHtml(range)}</small><small>${wallet.kind === "shared" ? "仅共享钱包扣款，不含账户余额扣款" : "账户余额消耗"}</small></span></td>
+      <td data-label="日结/快照余额" class="number-cell"><span class="cell-value"><strong>${cell(summary.balance)}</strong><small>${escapeHtml(balanceLabel)}</small></span></td>
+      <td data-label="日结截止"><span class="cell-value">${summary.endDate ? formatDate(summary.endDate).slice(5) : "—"}</span></td>
+      <td data-label="差额" class="number-cell"><span class="cell-value">${diffCell}${warning}</span></td>
     </tr>`;
   }).join("");
 }
@@ -743,11 +768,11 @@ function renderDashboard() {
   if (badge) badge.textContent = cloudReady ? (state.demo ? "云端演示数据" : "云端数据") : "本地缓存";
 
   const allRecords = state.financeRecords || [];
-  const allDates = allRecords.map((record) => String(record.date || record.columns?.日期 || "")).filter(Boolean).sort();
-  if (allDates.length) {
-    if (!$("#financeStartDate").value) $("#financeStartDate").value = allDates[0];
-    if (!$("#financeEndDate").value) $("#financeEndDate").value = allDates[allDates.length - 1];
-  }
+  const defaultRange = TrafficWalletSummary.defaultFinanceRange(allRecords, {
+    ...financeDateSelection, start: $("#financeStartDate").value, end: $("#financeEndDate").value
+  });
+  $("#financeStartDate").value = defaultRange.start;
+  $("#financeEndDate").value = defaultRange.end;
 
   const rows = filteredFinanceRecords().sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")) || financeAccountLabel(a).localeCompare(financeAccountLabel(b), "zh"));
   const accounts = financeAccountRows(rows);
@@ -1880,7 +1905,12 @@ function bindEvents() {
   $$('[data-jump-view]').forEach((button) => button.addEventListener("click", () => switchView(button.dataset.jumpView)));
   $("#menuButton").addEventListener("click", () => $("#sidebar").classList.toggle("open"));
   $("#dashboardDate").addEventListener("change", renderDashboard);
-  ["#financeStartDate", "#financeEndDate", "#financeAccountFilter"].forEach((selector) => $(selector).addEventListener("change", renderDashboard));
+  ["#financeStartDate", "#financeEndDate", "#financeAccountFilter"].forEach((selector) => $(selector).addEventListener("change", () => {
+    if (selector === "#financeStartDate") financeDateSelection.startTouched = true;
+    if (selector === "#financeEndDate") financeDateSelection.endTouched = true;
+    renderDashboard();
+  }));
+  $("#refreshFinanceButton").addEventListener("click", refreshCloudState);
   $("#exportFinanceButton").addEventListener("click", exportFinanceExcel);
   $("#quickRecordButton").addEventListener("click", () => openRecordModal());
   $("#addRechargeButton").addEventListener("click", () => activeRechargeLedger === "payment" ? openPaymentModal() : openRechargeModal());
@@ -2013,7 +2043,10 @@ function initialize() {
   $("#recordEndDate").value = localDate();
   bindEvents();
   renderAll();
-  cloudInitializationPromise = initializeCloudWithRetry();
+  cloudInitializationPromise = initializeCloudWithRetry().finally(() => { cloudInitializationFinished = true; });
+  setInterval(() => {
+    if (!document.hidden) refreshCloudState();
+  }, 60000);
 }
 
 initialize();
