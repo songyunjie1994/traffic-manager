@@ -1,7 +1,7 @@
 "use strict";
 
 const STORAGE_KEY = "traffic_manager_data_v1";
-const APP_VERSION = "2.7.6";
+const APP_VERSION = "2.7.7";
 const CLOUD_ROW_ID = 2;
 const RECHARGE_WORKFLOW_VERSION = "2026-08-29-v1";
 // 早期版本会在首次迁移时补建这 6 个手工账户；现在账户全部来自千川采集，
@@ -721,16 +721,24 @@ function financeAccountLabel(record) {
 }
 
 function financeNumber(value) {
-  if (typeof value === "number") return Number.isFinite(value) ? value : 0;
-  const normalized = String(value ?? "").replaceAll(",", "").replaceAll("，", "").replace(/[^0-9.\-]/g, "");
-  const parsed = Number(normalized);
-  return Number.isFinite(parsed) ? parsed : 0;
+  return TrafficWalletSummary.amount(value);
 }
 
 function financeMetric(record, field, columnName) {
-  if (record?.[field] !== undefined && record?.[field] !== null && record?.[field] !== "") return financeNumber(record[field]);
-  return financeNumber(record?.columns?.[columnName]);
+  if (record?.columns?.[columnName] !== undefined) return financeNumber(record.columns[columnName]);
+  return financeNumber(record?.[field]);
 }
+
+function financeAdd(...values) {
+  return values.some((value) => value === null) ? null : Math.round(values.reduce((sum, value) => sum + value, 0) * 100) / 100;
+}
+
+function financeSum(records, field, columnName) {
+  return records.length ? financeAdd(...records.map((record) => financeMetric(record, field, columnName))) : null;
+}
+
+function financeMoney(value) { return value === null ? "待核验" : money(value, 2); }
+function financeExportNumber(value) { return value === null ? "" : Number(value.toFixed(2)); }
 
 function filteredFinanceRecords() {
   const start = $("#financeStartDate")?.value || "";
@@ -752,11 +760,11 @@ function financeAccountRows(records) {
   records.forEach((record) => {
     const key = financeAccountKey(record) || financeAccountLabel(record);
     const row = groups.get(key) || { key, label: financeAccountLabel(record), totalSpend: 0, walletSpend: 0, nonGrantSpend: 0, giftSpend: 0, latest: null };
-    row.totalSpend += financeMetric(record, "balanceTotalSpend", "余额总消耗(元)");
+    row.totalSpend = financeAdd(row.totalSpend, financeMetric(record, "balanceTotalSpend", "余额总消耗(元)"));
     // 共享子钱包扣的钱在日结里是单独一列，不算在「余额总消耗」里，要单独统计
-    row.walletSpend += financeMetric(record, "sharedWalletSpend", "共享钱包消耗(元)");
-    row.nonGrantSpend += financeMetric(record, "nonGrantSpend", "非赠款消耗(元)");
-    row.giftSpend += financeMetric(record, "giftSpend", "赠款消耗(元)");
+    row.walletSpend = financeAdd(row.walletSpend, financeMetric(record, "sharedWalletSpend", "共享钱包消耗(元)"));
+    row.nonGrantSpend = financeAdd(row.nonGrantSpend, financeMetric(record, "nonGrantSpend", "非赠款消耗(元)"));
+    row.giftSpend = financeAdd(row.giftSpend, financeMetric(record, "giftSpend", "赠款消耗(元)"));
     if (!row.latest || String(record.date || "") > String(row.latest.date || "")) row.latest = record;
     groups.set(key, row);
   });
@@ -776,22 +784,22 @@ function renderDashboard() {
 
   const rows = filteredFinanceRecords().sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")) || financeAccountLabel(a).localeCompare(financeAccountLabel(b), "zh"));
   const accounts = financeAccountRows(rows);
-  const totalSpend = rows.reduce((total, record) => total + financeMetric(record, "balanceTotalSpend", "余额总消耗(元)"), 0);
+  const totalSpend = financeSum(rows, "balanceTotalSpend", "余额总消耗(元)");
   // 共享子钱包扣的钱单独一列，不在「余额总消耗」里；真实总消耗 = 账户余额消耗 + 共享钱包消耗
-  const walletSpend = rows.reduce((total, record) => total + financeMetric(record, "sharedWalletSpend", "共享钱包消耗(元)"), 0);
-  const nonGrantSpend = rows.reduce((total, record) => total + financeMetric(record, "nonGrantSpend", "非赠款消耗(元)"), 0);
-  const giftSpend = rows.reduce((total, record) => total + financeMetric(record, "giftSpend", "赠款消耗(元)"), 0);
+  const walletSpend = financeSum(rows, "sharedWalletSpend", "共享钱包消耗(元)");
+  const nonGrantSpend = financeSum(rows, "nonGrantSpend", "非赠款消耗(元)");
+  const giftSpend = financeSum(rows, "giftSpend", "赠款消耗(元)");
   const start = $("#financeStartDate").value;
   const end = $("#financeEndDate").value;
   const rangeText = start || end ? `${start ? formatDate(start) : "最早"} — ${end ? formatDate(end) : "最新"}` : "全部日期";
 
   $("#dashboardSummary").textContent = rows.length ? `${rangeText}，共 ${accounts.length} 个账户、${rows.length} 条云端财务明细。` : "当前筛选范围暂无财务数据。";
   $("#financeRangeLabel").textContent = rangeText;
-  $("#financeTrueSpend").textContent = money(totalSpend + walletSpend, 2);
-  $("#financeWalletSpend").textContent = money(walletSpend, 2);
-  $("#financeTotalSpend").textContent = money(totalSpend, 2);
-  $("#financeNonGrantSpend").textContent = money(nonGrantSpend, 2);
-  $("#financeGiftSpend").textContent = money(giftSpend, 2);
+  $("#financeTrueSpend").textContent = financeMoney(financeAdd(totalSpend, walletSpend));
+  $("#financeWalletSpend").textContent = financeMoney(walletSpend);
+  $("#financeTotalSpend").textContent = financeMoney(totalSpend);
+  $("#financeNonGrantSpend").textContent = financeMoney(nonGrantSpend);
+  $("#financeGiftSpend").textContent = financeMoney(giftSpend);
   $("#financeAccountCount").textContent = number(accounts.length);
   $("#financeRecordCount").textContent = `${number(rows.length)} 条财务明细`;
 
@@ -801,14 +809,14 @@ function renderDashboard() {
     // data-label 供手机端折卡片显示字段名
     return `<tr>
       <td data-label="广告账户" class="cell-main"><span class="cell-value"><strong>${escapeHtml(account.label)}</strong>${latest.advertiserId ? `<small>${escapeHtml(latest.advertiserId)}</small>` : ""}</span></td>
-      <td data-label="账户余额消耗" class="number-cell"><span class="cell-value">${money(account.totalSpend, 2)}</span></td>
-      <td data-label="共享钱包消耗" class="number-cell"><span class="cell-value">${money(account.walletSpend, 2)}</span></td>
-      <td data-label="合计消耗" class="number-cell"><span class="cell-value"><strong>${money(account.totalSpend + account.walletSpend, 2)}</strong></span></td>
-      <td data-label="非赠款消耗" class="number-cell"><span class="cell-value">${money(account.nonGrantSpend, 2)}</span></td>
-      <td data-label="赠款消耗" class="number-cell"><span class="cell-value">${money(account.giftSpend, 2)}</span></td>
-      <td data-label="最新总余额" class="number-cell"><span class="cell-value">${money(financeNumber(columns["总余额(元)"]), 2)}</span></td>
-      <td data-label="非赠款余额" class="number-cell"><span class="cell-value">${money(financeNumber(columns["非赠款余额(元)"]), 2)}</span></td>
-      <td data-label="赠款余额" class="number-cell"><span class="cell-value">${money(financeNumber(columns["赠款余额(元)"]), 2)}</span></td>
+      <td data-label="账户余额消耗" class="number-cell"><span class="cell-value">${financeMoney(account.totalSpend)}</span></td>
+      <td data-label="共享钱包消耗" class="number-cell"><span class="cell-value">${financeMoney(account.walletSpend)}</span></td>
+      <td data-label="合计消耗" class="number-cell"><span class="cell-value"><strong>${financeMoney(financeAdd(account.totalSpend, account.walletSpend))}</strong></span></td>
+      <td data-label="非赠款消耗" class="number-cell"><span class="cell-value">${financeMoney(account.nonGrantSpend)}</span></td>
+      <td data-label="赠款消耗" class="number-cell"><span class="cell-value">${financeMoney(account.giftSpend)}</span></td>
+      <td data-label="最新总余额" class="number-cell"><span class="cell-value">${financeMoney(financeNumber(columns["总余额(元)"]))}</span></td>
+      <td data-label="非赠款余额" class="number-cell"><span class="cell-value">${financeMoney(financeNumber(columns["非赠款余额(元)"]))}</span></td>
+      <td data-label="赠款余额" class="number-cell"><span class="cell-value">${financeMoney(financeNumber(columns["赠款余额(元)"]))}</span></td>
       <td data-label="余额日期"><span class="cell-value">${formatDate(latest.date || columns.日期)}</span></td>
     </tr>`;
   }).join("");
@@ -818,7 +826,7 @@ function renderDashboard() {
   $("#financeDetailBody").innerHTML = rows.map((record) => `<tr>
     <td>${formatDate(record.date || record.columns?.日期)}</td>
     <td class="cell-main"><strong>${escapeHtml(financeAccountLabel(record))}</strong></td>
-    ${columns.map((column) => `<td class="number-cell">${money(financeNumber(record.columns?.[column]), 2)}</td>`).join("")}
+    ${columns.map((column) => `<td class="number-cell">${financeMoney(financeNumber(record.columns?.[column]))}</td>`).join("")}
   </tr>`).join("");
 
   const hasRows = rows.length > 0;
@@ -1824,27 +1832,31 @@ function exportFinanceExcel() {
   const accounts = financeAccountRows(records);
   const columns = financeDetailColumns(records);
   const summaryRows = [
-    ["广告账户", "财务总消耗", "非赠款消耗", "赠款消耗", "最新总余额", "非赠款余额", "赠款余额", "余额日期"],
+    ["广告账户", "账户余额消耗", "共享钱包消耗", "财务总消耗", "非赠款消耗", "赠款消耗", "最新总余额", "非赠款余额", "赠款余额", "余额日期"],
     ...accounts.map((account) => {
       const latest = account.latest || {};
       const source = latest.columns || {};
       return [
         account.label,
-        Number(account.totalSpend.toFixed(2)),
-        Number(account.nonGrantSpend.toFixed(2)),
-        Number(account.giftSpend.toFixed(2)),
-        Number(financeNumber(source["总余额(元)"]).toFixed(2)),
-        Number(financeNumber(source["非赠款余额(元)"]).toFixed(2)),
-        Number(financeNumber(source["赠款余额(元)"]).toFixed(2)),
+        financeExportNumber(account.totalSpend),
+        financeExportNumber(account.walletSpend),
+        financeExportNumber(financeAdd(account.totalSpend, account.walletSpend)),
+        financeExportNumber(account.nonGrantSpend),
+        financeExportNumber(account.giftSpend),
+        financeExportNumber(financeNumber(source["总余额(元)"])),
+        financeExportNumber(financeNumber(source["非赠款余额(元)"])),
+        financeExportNumber(financeNumber(source["赠款余额(元)"])),
         latest.date || source.日期 || "",
       ];
     }),
     [],
     [
       "合计",
-      Number(records.reduce((total, record) => total + financeMetric(record, "balanceTotalSpend", "余额总消耗(元)"), 0).toFixed(2)),
-      Number(records.reduce((total, record) => total + financeMetric(record, "nonGrantSpend", "非赠款消耗(元)"), 0).toFixed(2)),
-      Number(records.reduce((total, record) => total + financeMetric(record, "giftSpend", "赠款消耗(元)"), 0).toFixed(2)),
+      financeExportNumber(financeSum(records, "balanceTotalSpend", "余额总消耗(元)")),
+      financeExportNumber(financeSum(records, "sharedWalletSpend", "共享钱包消耗(元)")),
+      financeExportNumber(financeAdd(financeSum(records, "balanceTotalSpend", "余额总消耗(元)"), financeSum(records, "sharedWalletSpend", "共享钱包消耗(元)"))),
+      financeExportNumber(financeSum(records, "nonGrantSpend", "非赠款消耗(元)")),
+      financeExportNumber(financeSum(records, "giftSpend", "赠款消耗(元)")),
       "", "", "", "",
     ],
   ];
@@ -1853,7 +1865,7 @@ function exportFinanceExcel() {
     ...records.map((record) => [
       record.date || record.columns?.日期 || "",
       financeAccountLabel(record),
-      ...columns.map((column) => Number(financeNumber(record.columns?.[column]).toFixed(2))),
+      ...columns.map((column) => financeExportNumber(financeNumber(record.columns?.[column]))),
     ]),
   ];
   window.TrafficExcel.downloadWorkbook(`财务报表-${localDate()}.xlsx`, [
