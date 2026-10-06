@@ -1,7 +1,7 @@
 "use strict";
 
 const STORAGE_KEY = "traffic_manager_data_v1";
-const APP_VERSION = "2.8.0";
+const APP_VERSION = "2.8.1";
 const CLOUD_ROW_ID = 2;
 const RECHARGE_WORKFLOW_VERSION = "2026-08-29-v1";
 // 早期版本会在首次迁移时补建这 6 个手工账户；现在账户全部来自千川采集，
@@ -794,12 +794,12 @@ function renderFinanceChecks(start, end) {
   const funding = TrafficWalletSummary.projectFunding(state, { start, end });
   const checks = wallets.flatMap(summary => summary.accountChecks.map(check => ({ ...check, broker: summary.wallet.broker })));
   panel.innerHTML = `<p>账户余额核验采用各钱包完整期初区间，不随明细筛选改变。充值比对范围：${escapeHtml(start || "最早")}—${escapeHtml(end || "最新")}。${escapeHtml(funding.message)}</p>
-    <div class="table-scroll"><table><thead><tr><th>中介 / 账户</th><th>期初依据</th><th>日期缺口</th><th>逐日异常</th><th>账户差额</th><th>余额核验</th></tr></thead><tbody>${checks.map(check => `<tr>
-      <td>${escapeHtml(check.broker || "")} / ${escapeHtml(check.name)}</td>
-      <td>${escapeHtml({ platform: "平台前日日结", account: "独立账户期初", inferred: "首日反推，未独立验证", missing: "缺失" }[check.openingSource])}</td>
-      <td>${check.missingDates.length}${check.missingDates.length ? `<small>${escapeHtml(check.missingDates.join("、"))}</small>` : ""}</td>
-      <td>${check.errors.length}${check.errors.length ? `<small>${escapeHtml(check.errors.map(error => `${error.date} ${error.type} 差额${error.difference}`).join("；"))}</small>` : ""}</td>
-      <td>${financeMoney(check.difference)}</td><td>${escapeHtml({ balanced: "账户余额通过（充值另核验）", pending: "待核验", mismatch: "异常，不通过" }[check.status])}</td></tr>`).join("")}</tbody></table></div>
+    <div class="table-scroll" data-fold="cards"><table><thead><tr><th>中介 / 账户</th><th>期初依据</th><th>日期缺口</th><th>逐日异常</th><th>账户差额</th><th>余额核验</th></tr></thead><tbody>${checks.map(check => `<tr>
+      <td data-label="中介 / 账户" class="cell-main"><span class="cell-value">${escapeHtml(check.broker || "")} / ${escapeHtml(check.name)}<small>${escapeHtml(check.advertiserId)}</small></span></td>
+      <td data-label="期初依据">${escapeHtml({ platform: "平台前日日结", account: "独立账户期初", inferred: "首日反推，未独立验证", missing: "缺失" }[check.openingSource])}</td>
+      <td data-label="日期缺口">${check.missingDates.length}${check.missingDates.length ? `<small>${escapeHtml(check.missingDates.join("、"))}</small>` : ""}</td>
+      <td data-label="逐日异常">${check.errors.length}${check.errors.length ? `<small>${escapeHtml(check.errors.map(error => `${error.date} ${error.type} 差额${error.difference}`).join("；"))}</small>` : ""}</td>
+      <td data-label="账户差额">${financeMoney(check.difference)}</td><td data-label="余额核验">${escapeHtml({ balanced: "账户余额通过（充值另核验）", pending: "待核验", mismatch: "异常，不通过" }[check.status])}</td></tr>`).join("")}</tbody></table></div>
     <h3>充值 / 现金到账核验</h3><p>未分配到唯一账户的充值 ${funding.unallocated} 笔；付款 ${funding.paymentCount} 笔；待处理事项 ${funding.issues.length} 项。缺现金/赠款列时不把总存入当现金。</p>
     <details><summary>查看现金到账比对与待处理事项</summary><div class="table-scroll"><table><thead><tr><th>账户</th><th>日期</th><th>登记本金</th><th>登记返点</th><th>平台总存入</th><th>平台现金</th><th>平台赠款</th><th>现金差额</th></tr></thead><tbody>${funding.groups.map(row => `<tr><td>${escapeHtml(row.name)}</td><td>${escapeHtml(row.date)}</td>${[row.registeredCash, row.registeredGrant, row.platformDeposit, row.platformCash, row.platformGrant, row.difference].map(value => `<td>${financeMoney(value)}</td>`).join("")}</tr>`).join("")}</tbody></table></div><ul>${funding.issues.map(issue => `<li>${escapeHtml([issue.date, issue.broker, issue.id, issue.reason].filter(Boolean).join(" · "))}</li>`).join("")}</ul></details>`;
 }

@@ -10,5 +10,5 @@ const path = require('node:path');
   const matches = remote.replace(/\r\n/g, '\n') === local.replace(/\r\n/g, '\n');
   console.log(JSON.stringify({ at: new Date().toISOString(), status: response.status, script, matches,
     sharedExport: remote.includes('financeExportNumber(account.walletSpend)'), unknownNotZero: remote.includes('financeMoney(value)') }));
-  if (!matches || script !== 'app.js?v=2.8.0') process.exitCode = 1;
+  if (!matches || script !== 'app.js?v=2.8.1') process.exitCode = 1;
 })().catch(error => { console.error(error.message); process.exitCode = 1; });
