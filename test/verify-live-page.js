@@ -12,6 +12,8 @@ const path = require('node:path');
   for (const name of ['wallet-summary.js', 'finance-auth.js']) {
     const asset = html.match(new RegExp('src="(' + name.replace('.', '\\.') + '\\?v=[^"]+)"'))?.[1];
     if (!asset) throw Error('Protected frontend asset missing: ' + name);
+    const expected = name === 'finance-auth.js' ? 'finance-auth.js?v=1.0.1' : 'wallet-summary.js?v=1.1.1';
+    if (asset !== expected) process.exitCode = 1;
     const res = await fetch(url + asset + '&verify=' + Date.now(), { signal: AbortSignal.timeout(20000) });
     const body = await res.text();
     const same = body.replace(/\r\n/g, '\n') === fs.readFileSync(path.join(__dirname, '..', name), 'utf8').replace(/\r\n/g, '\n');
