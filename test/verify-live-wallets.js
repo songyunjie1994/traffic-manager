@@ -4,6 +4,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const assert = require("node:assert/strict");
 const vm = require("node:vm");
+const cp = require("node:child_process");
 const { projectWallets, defaultFinanceRange } = require("../wallet-summary");
 
 async function main() {
@@ -12,8 +13,16 @@ async function main() {
   const url = configBlock.match(/url:\s*"([^"]+)"/)[1];
   const key = configBlock.match(/publishableKey:\s*"([^"]+)"/)[1];
   assert.equal(url, "https://mabxdkjqilulkrmqrrgo.supabase.co");
+  // An explicitly authorized local operator reads the evidence with the CLI.
+  // This is not browser login acceptance and never prints the credential.
+  assert.ok(process.argv.includes('--privileged-read'), 'Use explicit --privileged-read for protected production evidence');
+  const keys = cp.spawnSync('supabase', ['projects', 'api-keys', '--project-ref', 'mabxdkjqilulkrmqrrgo', '--output', 'json'],
+    { shell: true, windowsHide: true, encoding: 'utf8', timeout: 30000 });
+  assert.equal(keys.status, 0, 'Authorized CLI access unavailable');
+  const credential = JSON.parse(keys.stdout).find(row => row.name === 'service_role')?.api_key;
+  assert.ok(credential, 'Authorized project key unavailable');
   const response = await fetch(`${url}/rest/v1/app_data?select=data&id=eq.2`, {
-    headers: { apikey: key, Authorization: `Bearer ${key}` },
+    headers: { apikey: credential, Authorization: `Bearer ${credential}` },
     cache: "no-store", signal: AbortSignal.timeout(20000)
   });
   assert.equal(response.status, 200);
