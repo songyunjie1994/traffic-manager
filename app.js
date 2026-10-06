@@ -48,6 +48,7 @@ const VIEW_META = {
 let state = loadState();
 let confirmResolver = null;
 let cloudReady = false;
+let financeCanWrite = false;
 let cloudInitializationPromise = null;
 let lastCloudSnapshot = "";
 let lastCloudRawState = null;
@@ -280,6 +281,7 @@ function setCloudStatus(status, label) {
 async function readCloudDocument() {
   const rows = await financeAuth.cloud("read");
   if (!rows[0]?.data) return null;
+  financeCanWrite = rows[0].access?.canWrite === true;
   return rows[0].data;
 }
 
@@ -295,6 +297,7 @@ async function createCloudState(candidate) {
 }
 
 async function updateCloudState(candidate) {
+  if (!financeCanWrite) throw Object.assign(new Error("公开查看模式不允许修改数据，请登录具有编辑权限的账号"), { code: "permission_denied" });
   if (!lastCloudRawState) throw new Error("缺少云端版本快照，未保存修改");
   const expected = structuredClone(lastCloudRawState);
   const changed = await financeAuth.cloud("cas", { p_row_id: String(CLOUD_ROW_ID), p_expected: expected, p_next: candidate });
@@ -528,6 +531,7 @@ function aggregateCampaignRecords(records) {
 }
 
 function renderAll() {
+  renderFinanceAccess();
   renderSelectOptions();
   renderDashboard();
   renderWallets();
@@ -1462,6 +1466,9 @@ function openRecordModal(record = null, campaignId = null) {
 }
 
 function showModal(id) {
+  if (!financeCanWrite && ["campaignModal", "rechargeModal", "paymentModal", "recordModal"].includes(id)) {
+    showFinanceLogin("查看无需登录；修改请登录具有编辑权限的账号"); return;
+  }
   $(`#${id}`).classList.remove("hidden");
   document.body.style.overflow = "hidden";
 }
@@ -2050,10 +2057,16 @@ function bindEvents() {
 }
 
 function showFinanceLogin(message = "") {
-  cloudReady = false;
   $("#financeApplication").hidden = true;
   $("#financeLogin").hidden = false;
   $("#financeLoginError").textContent = message;
+}
+
+function renderFinanceAccess() {
+  document.body.classList.toggle("finance-readonly", !financeCanWrite);
+  $("#financeSignOut").textContent = financeAuth.hasSession() ? "退出编辑登录" : "登录编辑";
+  $("#financeAccessStatus").textContent = financeCanWrite ? "已登录 · 可编辑" : "公开查看 · 不可修改";
+  $("#importJsonInput").disabled = !financeCanWrite;
 }
 
 function initialize() {
@@ -2077,12 +2090,17 @@ function initialize() {
     finally { $("#financeLoginPassword").value = ""; if (button) button.disabled = false; }
   });
   $("#financeSignOut").addEventListener("click", () => {
-    financeAuth.signOut(); state = emptyState(); lastCloudRawState = null; lastCloudSnapshot = ""; showFinanceLogin();
+    if (!financeAuth.hasSession()) { showFinanceLogin(); return; }
+    financeAuth.signOut(); financeCanWrite = false; renderFinanceAccess();
+    cloudInitializationPromise = initializeCloudWithRetry(1).finally(() => { cloudInitializationFinished = true; });
   });
-  if (financeAuth.hasSession()) cloudInitializationPromise = initializeCloudWithRetry(1).finally(() => { cloudInitializationFinished = true; });
-  else showFinanceLogin();
+  $("#financeViewButton").addEventListener("click", () => {
+    $("#financeLogin").hidden = true; $("#financeApplication").hidden = false;
+  });
+  renderFinanceAccess();
+  cloudInitializationPromise = initializeCloudWithRetry(1).finally(() => { cloudInitializationFinished = true; });
   setInterval(() => {
-    if (!document.hidden && financeAuth.hasSession()) refreshCloudState();
+    if (!document.hidden) refreshCloudState();
   }, 60000);
 }
 

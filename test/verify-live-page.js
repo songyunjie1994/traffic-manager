@@ -12,7 +12,7 @@ const path = require('node:path');
   for (const name of ['wallet-summary.js', 'finance-auth.js']) {
     const asset = html.match(new RegExp('src="(' + name.replace('.', '\\.') + '\\?v=[^"]+)"'))?.[1];
     if (!asset) throw Error('Protected frontend asset missing: ' + name);
-    const expected = name === 'finance-auth.js' ? 'finance-auth.js?v=1.0.1' : 'wallet-summary.js?v=1.1.1';
+    const expected = name === 'finance-auth.js' ? 'finance-auth.js?v=1.1.0' : 'wallet-summary.js?v=1.1.1';
     if (asset !== expected) process.exitCode = 1;
     const res = await fetch(url + asset + '&verify=' + Date.now(), { signal: AbortSignal.timeout(20000) });
     const body = await res.text();
@@ -23,5 +23,5 @@ const path = require('node:path');
   console.log(JSON.stringify({ at: new Date().toISOString(), status: response.status, script, matches,
     assets,
     sharedExport: remote.includes('financeExportNumber(account.walletSpend)'), unknownNotZero: remote.includes('financeMoney(value)') }));
-  if (!matches || script !== 'app.js?v=2.8.3') process.exitCode = 1;
+  if (!matches || script !== 'app.js?v=2.8.4') process.exitCode = 1;
 })().catch(error => { console.error(error.message); process.exitCode = 1; });

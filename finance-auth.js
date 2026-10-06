@@ -25,13 +25,13 @@
       const response = await request(`${config.url}/auth/v1/token?grant_type=password`, { method: 'POST', headers: { apikey: config.publishableKey, 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password }), signal: AbortSignal.timeout(15000) });
       const body = await response.json();
       if (epoch !== started) throw Object.assign(new Error('登录状态已变化'), { code: 'login_required' });
-      if (!response.ok || !body.access_token) throw new Error('登录失败，请检查采集中心管理员账号和密码');
+      if (!response.ok || !body.access_token) throw new Error('登录失败，请检查编辑账号和密码');
       save(fromResponse(body));
       environment.sessionStorage?.removeItem('traffic-finance-signedout');
       return session;
     }
     async function token(force = false) {
-      if (!session?.accessToken) throw Object.assign(new Error('请先登录采集中心管理员账号'), { code: 'login_required' });
+      if (!session?.accessToken) throw Object.assign(new Error('查看无需登录，修改或查看凭证图片请先登录编辑账号'), { code: 'login_required' });
       if (!force && session.expiresAt > Date.now() + 60000) return session.accessToken;
       if (!session.refreshToken) { save(null); throw Object.assign(new Error('登录已过期，请重新登录'), { code: 'login_required' }); }
       if (!refreshing) {
@@ -50,15 +50,18 @@
       let requestEpoch;
       const call = async bearer => {
         requestEpoch = epoch;
-        return request(`${config.url}/functions/v1/traffic-finance`, { method: 'POST', headers: { apikey: config.publishableKey, Authorization: `Bearer ${bearer}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ action, ...payload }), cache: 'no-store', signal: AbortSignal.timeout(15000) });
+        return request(`${config.url}/functions/v1/traffic-finance`, { method: 'POST', headers: { apikey: config.publishableKey, ...(bearer ? { Authorization: `Bearer ${bearer}` } : {}), 'Content-Type': 'application/json' }, body: JSON.stringify({ action, ...payload }), cache: 'no-store', signal: AbortSignal.timeout(15000) });
       };
-      let response = await call(await token());
+      let bearer = null;
+      if (action !== 'read' || session?.accessToken) {
+        try { bearer = await token(); } catch (error) { if (action !== 'read' || error.code !== 'login_required') throw error; }
+      }
+      let response = await call(bearer);
       if (requestEpoch !== epoch) throw Object.assign(new Error('登录状态已变化，已忽略旧会话响应'), { code: 'login_required' });
       if (response.status === 401 && session?.refreshToken) response = await call(await token(true));
       if (requestEpoch !== epoch) throw Object.assign(new Error('登录状态已变化，已忽略旧会话响应'), { code: 'login_required' });
-      if (response.status === 401 || response.status === 403) {
-        save(null); throw Object.assign(new Error(response.status === 403 ? '此账号不是采集中心管理员，不能读取财务数据' : '登录已过期，请重新登录'), { code: 'login_required' });
-      }
+      if (response.status === 403) throw Object.assign(new Error('当前账号没有修改权限；财务仍可公开查看'), { code: 'permission_denied' });
+      if (response.status === 401) { save(null); throw Object.assign(new Error('编辑登录已过期，请重新登录'), { code: 'login_required' }); }
       if (!response.ok) throw new Error(`财务云端请求失败（${response.status}）`);
       const body = await response.json();
       if (requestEpoch !== epoch) throw Object.assign(new Error('登录状态已变化，未加载旧会话数据'), { code: 'login_required' });

@@ -10,9 +10,13 @@ function harness(handler, existing = {}) {
   return { auth: create(config, env), store };
 }
 const signedIn = token => ({ ok: true, status: 200, json: async () => ({ access_token: token, refresh_token: 'test-refresh', expires_in: 3600, user: { email: 'admin@example.test' } }) });
-test('anonymous financial requests never send public key as authorization', async () => {
-  let calls = 0; const { auth } = harness(async () => { calls++; });
-  await assert.rejects(auth.cloud('read'), { code: 'login_required' }); assert.equal(calls, 0);
+test('public financial read needs no login but anonymous writes still fail closed', async () => {
+  let calls = 0; const { auth } = harness(async (_url, options) => {
+    calls++; assert.equal(options.headers.Authorization, undefined);
+    return { ok: true, status: 200, json: async () => [{ data: { financeRecords: [] }, access: { canWrite: false } }] };
+  });
+  await auth.cloud('read'); assert.equal(calls, 1);
+  await assert.rejects(auth.cloud('cas'), { code: 'login_required' }); assert.equal(calls, 1);
 });
 test('password is sent only to auth, not stored; business request uses user token', async () => {
   const { auth, store } = harness(async (url, options) => {
@@ -24,10 +28,18 @@ test('password is sent only to auth, not stored; business request uses user toke
   await auth.signIn('admin@example.test', 'password-test-only'); await auth.cloud('read');
   assert.ok(!JSON.stringify([...store]).includes('password-test-only'));
 });
-test('non-admin authorization hides data and clears finance session', async () => {
+test('write permission denial preserves login and public viewing', async () => {
   const { auth } = harness(async url => url.includes('/auth/v1/token') ? signedIn('user-jwt-test') : { ok: false, status: 403 });
   await auth.signIn('user@example.test', 'password-test-only');
-  await assert.rejects(auth.cloud('read'), { code: 'login_required' }); assert.equal(auth.hasSession(), false);
+  await assert.rejects(auth.cloud('cas'), { code: 'permission_denied' }); assert.equal(auth.hasSession(), true);
+});
+
+test('expired editing session falls back to public read without blocking viewing', async () => {
+  const { auth } = harness(async (_url, options) => {
+    assert.equal(options.headers.Authorization, undefined);
+    return { ok: true, status: 200, json: async () => [] };
+  }, { 'traffic-finance-session-v1': JSON.stringify({ accessToken: 'old-test', expiresAt: Date.now() - 1 }) });
+  await auth.cloud('read'); assert.equal(auth.hasSession(), false);
 });
 test('401 refresh is single flight and retried once without anonymous fallback', async () => {
   let refreshes = 0;

@@ -3588,3 +3588,14 @@ tbody tr:hover td {
 
 /* Authenticated data must remain hidden even when layout classes set display. */
 [hidden] { display: none !important; }
+[hidden] { display: none !important; }
+.finance-readonly #quickRecordButton,
+.finance-readonly #addRechargeButton,
+.finance-readonly #addRecordButton,
+.finance-readonly #addCampaignButton,
+.finance-readonly #resetDemoButton,
+.finance-readonly #clearDataButton,
+.finance-readonly .file-button,
+.finance-readonly .table-actions,
+.finance-readonly [data-action="edit-record"],
+.finance-readonly [data-action="delete-record"] { display: none !important; }

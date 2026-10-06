@@ -9,20 +9,21 @@
       content="以云端数据为主，支持充值登记、消耗录入与投流报表的管理系统。"
     />
     <title>投流管理系统</title>
-    <link rel="stylesheet" href="styles.css?v=1.8.0" />
+    <link rel="stylesheet" href="styles.css?v=1.8.1" />
   </head>
   <body>
-    <section id="financeLogin" class="panel" style="max-width:460px;margin:10vh auto;padding:32px">
-      <h1>投流管理系统登录</h1>
-      <p>仅采集中心现有管理员可访问财务、充值及消耗数据。</p>
+    <section id="financeLogin" class="panel" hidden style="max-width:460px;margin:10vh auto;padding:32px">
+      <h1>登录编辑账号</h1>
+      <p>查看数据无需登录；修改、删除和凭证图片仍需具有编辑权限。</p>
       <form id="financeLoginForm">
-        <label class="form-field">管理员邮箱<input id="financeLoginEmail" type="email" autocomplete="username" required /></label>
+        <label class="form-field">账号邮箱<input id="financeLoginEmail" type="email" autocomplete="username" required /></label>
         <label class="form-field">密码<input id="financeLoginPassword" type="password" autocomplete="current-password" required /></label>
         <button class="button button-primary" type="submit">登录</button>
+        <button class="button button-ghost" id="financeViewButton" type="button">返回公开查看</button>
         <p id="financeLoginError" role="alert"></p>
       </form>
     </section>
-    <div class="app-shell" id="financeApplication" hidden>
+    <div class="app-shell" id="financeApplication">
       <aside class="sidebar" id="sidebar">
         <div class="brand">
           <div class="brand-mark" aria-hidden="true">
@@ -70,7 +71,8 @@
 
       <main class="main-content">
         <header class="topbar">
-          <button id="financeSignOut" class="button button-ghost" type="button">退出登录</button>
+          <span id="financeAccessStatus">公开查看</span>
+          <button id="financeSignOut" class="button button-ghost" type="button">登录编辑</button>
           <div class="topbar-left">
             <button class="icon-button menu-button" id="menuButton" aria-label="展开导航">☰</button>
             <div class="header-package-icon" aria-hidden="true">
@@ -692,7 +694,7 @@
     <div class="toast-region" id="toastRegion" aria-live="polite"></div>
     <script src="excel-export.js?v=1.0.0"></script>
     <script src="wallet-summary.js?v=1.1.1"></script>
-  <script src="finance-auth.js?v=1.0.1"></script>
-  <script src="app.js?v=2.8.3"></script>
+  <script src="finance-auth.js?v=1.1.0"></script>
+  <script src="app.js?v=2.8.4"></script>
   </body>
 </html>
