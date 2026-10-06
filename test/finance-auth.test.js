@@ -61,3 +61,31 @@ test('source has no direct anonymous document/CAS or arbitrary receipt path', ()
   assert.match(app, /financeAuth\.token\(\)/);
   assert.match(fs.readFileSync(require('node:path').join(__dirname, '../styles.css'), 'utf8'), /\[hidden\]\s*\{\s*display:\s*none !important/);
 });
+
+test('old forbidden response cannot erase a newer successful login', async () => {
+  let finish;
+  const { auth } = harness(async url => url.includes('/auth/v1/token') ? signedIn('user-test') : new Promise(resolve => { finish = resolve; }));
+  await auth.signIn('admin@example.test', 'password-test-only');
+  const read = auth.cloud('read'); await new Promise(resolve => setImmediate(resolve));
+  await auth.signIn('admin@example.test', 'password-test-only');
+  finish({ ok: false, status: 403 });
+  await assert.rejects(read, { code: 'login_required' });
+  assert.equal(auth.hasSession(), true);
+});
+
+test('logout while password login is in flight does not log back in', async () => {
+  let finish;
+  const { auth } = harness(() => new Promise(resolve => { finish = resolve; }));
+  const login = auth.signIn('admin@example.test', 'password-test-only');
+  auth.signOut(); finish(signedIn('late-test'));
+  await assert.rejects(login, { code: 'login_required' });
+  assert.equal(auth.hasSession(), false);
+});
+
+test('expired borrowed console access token is cleared without refreshing console', async () => {
+  const { auth } = harness(() => { throw Error('Must not call remote auth'); }, {
+    'traffic-finance-session-v1': JSON.stringify({ accessToken: 'borrowed-test', expiresAt: Date.now() - 1 })
+  });
+  await assert.rejects(auth.token(), { code: 'login_required' });
+  assert.equal(auth.hasSession(), false);
+});
