@@ -1396,11 +1396,18 @@ function openRechargeModal(recharge = null, campaignId = null) {
   $("#rechargeId").value = recharge?.id || "";
   $("#rechargeModalTitle").textContent = recharge ? "编辑充值记录" : "添加充值记录";
   $("#rechargeDate").value = recharge?.date || localDate();
-  const selectedCampaign = campaignById(recharge?.campaignId || campaignId) || state.campaigns[0];
-  $("#rechargeCampaign").value = selectedCampaign.id;
-  $("#rechargeAccountSearch").value = rechargeAccountLabel(selectedCampaign);
+  const selectedCampaign = campaignById(recharge?.campaignId || campaignId);
+  $("#rechargeCampaign").value = selectedCampaign?.id || "";
+  $("#rechargeAccountSearch").value = selectedCampaign ? rechargeAccountLabel(selectedCampaign) : "";
   $("#rechargeAccountSearch").setCustomValidity("");
   $("#rechargeAmount").value = recharge?.baseAmount ?? recharge?.amount ?? "";
+  $("#rechargeCashCredit").value = recharge?.cashCreditAmount ?? "";
+  $("#rechargeGiftCredit").value = recharge?.giftCreditAmount ?? "";
+  $("#rechargeReference").value = recharge?.reference || "";
+  const payments = state.recharges.filter(row => row.recordType === "payment" && row.status === "已付款");
+  $("#rechargeSourcePayment").innerHTML = `<option value="">未关联（保持待核验）</option>` + payments.map(row => `<option value="${escapeHtml(row.id)}">${escapeHtml([row.date, row.broker || row.payee || "", money(row.amount, 2)].join(" · "))}</option>`).join("");
+  if (recharge?.sourcePaymentId && !payments.some(row => row.id === recharge.sourcePaymentId)) $("#rechargeSourcePayment").innerHTML += `<option value="${escapeHtml(recharge.sourcePaymentId)}">原关联付款未确认或已不存在（待核验）</option>`;
+  $("#rechargeSourcePayment").value = recharge?.sourcePaymentId || "";
   updateRechargeAmountHint();
   showModal("rechargeModal");
   setTimeout(() => $("#rechargeDate").focus(), 60);
@@ -1510,8 +1517,25 @@ async function handleRechargeSubmit(event) {
   accountInput.setCustomValidity("");
   $("#rechargeCampaign").value = selectedCampaign.id;
   const id = $("#rechargeId").value;
+  const existing = state.recharges.find(row => row.id === id);
   const amounts = rechargeAmounts(selectedCampaign, $("#rechargeAmount").value);
+  // Assigning an old unallocated record must not recalculate its money at today's rate.
+  if (existing && Number($("#rechargeAmount").value) === Number(existing.baseAmount ?? existing.amount)) {
+    amounts.baseAmount = existing.baseAmount ?? existing.amount;
+    amounts.rebateRate = existing.rebateRate ?? 0;
+    amounts.rebateAmount = existing.rebateAmount ?? 0;
+    amounts.creditedAmount = existing.amount;
+  }
+  const cash = window.TrafficWalletSummary.amount($("#rechargeCashCredit").value);
+  const gift = window.TrafficWalletSummary.amount($("#rechargeGiftCredit").value);
+  if ([$("#rechargeCashCredit").value, $("#rechargeGiftCredit").value].some((value, index) => value !== "" && ([cash, gift][index] === null || [cash, gift][index] < 0))) {
+    toast("到账金额必须是非负人民币金额，未知请留空", "error"); return;
+  }
+  if (cash !== null && gift !== null && Math.abs(cash + gift - amounts.creditedAmount) > 0.011) {
+    toast("到账现金与平台赠款合计必须等于登记到账总额", "error"); return;
+  }
   const item = {
+    ...existing,
     id: id || uid("chg"),
     date: $("#rechargeDate").value,
     campaignId: selectedCampaign.id,
@@ -1519,12 +1543,16 @@ async function handleRechargeSubmit(event) {
     rebateRate: amounts.rebateRate,
     rebateAmount: amounts.rebateAmount,
     amount: amounts.creditedAmount,
+    amountCurrency: existing?.amountCurrency || "CNY",
+    cashCreditAmount: cash,
+    giftCreditAmount: gift,
+    sourcePaymentId: $("#rechargeSourcePayment").value || "",
     recordType: "recharge",
-    status: "已充值",
-    channel: "",
-    reference: "",
-    operator: "",
-    notes: "",
+    status: existing?.status || "已充值",
+    channel: existing?.channel || "",
+    reference: $("#rechargeReference").value.trim(),
+    operator: existing?.operator || "",
+    notes: existing?.notes || "",
     createdAt: state.recharges.find((recharge) => recharge.id === id)?.createdAt || new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   };

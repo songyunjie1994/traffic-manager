@@ -626,6 +626,10 @@
             <input id="rechargeAmount" type="number" min="0.01" step="0.01" inputmode="decimal" required placeholder="请输入充值本金" />
             <small class="field-hint" id="rechargeAmountHint">选择账户后自动计算预计到账金额。</small>
           </label>
+          <label class="form-field"><span>实际到账现金（元，选填）</span><input id="rechargeCashCredit" type="number" min="0" step="0.01" placeholder="未知请留空，不自动等同本金" /></label>
+          <label class="form-field"><span>实际平台赠款（元，选填）</span><input id="rechargeGiftCredit" type="number" min="0" step="0.01" placeholder="未知请留空，中介返点不是赠款" /></label>
+          <label class="form-field"><span>平台到账流水号（选填）</span><input id="rechargeReference" maxlength="120" /></label>
+          <label class="form-field span-3"><span>关联付款凭证（选填）</span><select id="rechargeSourcePayment"></select><small class="field-hint">按真实凭证选择；金额一致不表示已核验到账。现金与赠款都填写时，合计必须等于登记到账总额。</small></label>
         </div>
         <div class="modal-actions"><button type="button" class="button button-ghost" data-close-modal="rechargeModal">取消</button><button type="submit" class="button button-primary">保存充值记录</button></div>
       </form>
@@ -689,6 +693,6 @@
     <script src="excel-export.js?v=1.0.0"></script>
     <script src="wallet-summary.js?v=1.1.1"></script>
   <script src="finance-auth.js?v=1.0.1"></script>
-    <script src="app.js?v=2.8.2"></script>
+  <script src="app.js?v=2.8.3"></script>
   </body>
 </html>
