@@ -43,7 +43,7 @@ function configuredOrigins() {
 function corsHeaders(origin: string) {
   return {
     "Access-Control-Allow-Origin": origin,
-    "Access-Control-Allow-Headers": "apikey, content-type, x-client-info",
+    "Access-Control-Allow-Headers": "apikey, authorization, content-type, x-client-info",
     "Access-Control-Allow-Methods": "POST, OPTIONS",
     "Cache-Control": "no-store",
     "Content-Type": "application/json; charset=utf-8",
@@ -224,12 +224,23 @@ Deno.serve(async (request) => {
   if (!suppliedKey || !publishableKeys().includes(suppliedKey)) {
     return json(origin, 401, { error: "INVALID_CLIENT_KEY" });
   }
+  // A public API key and Origin are not user identity. Use the collector's
+  // existing server-side admin list, never a client-supplied email or path.
+  const token = (request.headers.get("Authorization") || "").match(/^Bearer (.+)$/)?.[1];
+  if (!token || token.startsWith("sb_")) return json(origin, 401, { error: "LOGIN_REQUIRED" });
+  const authResponse = await fetch(`${storageConfig().url}/auth/v1/user`, {
+    headers: { apikey: suppliedKey, Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(10000)
+  }).catch(() => null);
+  if (!authResponse?.ok) return json(origin, 401, { error: "LOGIN_REQUIRED" });
+  const user = await authResponse.json();
+  const admins = (Deno.env.get("COLLECTOR_ADMIN_EMAILS") || "").split(",").map(value => value.trim().toLowerCase()).filter(Boolean);
+  if (!user.id || user.is_anonymous || !user.email_confirmed_at || !admins.includes(String(user.email || "").toLowerCase())) return json(origin, 403, { error: "NOT_ADMIN" });
   if (isRateLimited(request)) return json(origin, 429, { error: "RATE_LIMITED" });
 
   const contentLength = Number(request.headers.get("content-length") || 0);
   if (contentLength > MAX_REQUEST_BYTES) return json(origin, 413, { error: "IMAGE_TOO_LARGE" });
 
-  let body: { action?: unknown; imageDataUrl?: unknown; imagePath?: unknown };
+  let body: { action?: unknown; imageDataUrl?: unknown; recordId?: unknown };
   try {
     body = await request.json();
   } catch {
@@ -238,7 +249,15 @@ Deno.serve(async (request) => {
 
   if (body.action === "get-image") {
     try {
-      const storedImage = await readReceiptImage(cleanText(body.imagePath, 240));
+      const recordId = cleanText(body.recordId, 160);
+      if (!recordId) return json(origin, 400, { error: "RECORD_REQUIRED" });
+      const { url } = storageConfig();
+      const document = await fetch(`${url}/rest/v1/app_data?select=data&id=eq.2`, { headers: storageHeaders(), signal: AbortSignal.timeout(10000) });
+      if (!document.ok) return json(origin, 503, { error: "DOCUMENT_UNAVAILABLE" });
+      const rows = await document.json();
+      const payment = rows[0]?.data?.recharges?.find((row: { id?: string; recordType?: string }) => row.id === recordId && row.recordType === "payment");
+      if (!payment?.imagePath) return json(origin, 404, { error: "IMAGE_NOT_FOUND" });
+      const storedImage = await readReceiptImage(cleanText(payment.imagePath, 240));
       if (!storedImage) return json(origin, 404, { error: "IMAGE_NOT_FOUND" });
       return new Response(storedImage.body, {
         status: 200,

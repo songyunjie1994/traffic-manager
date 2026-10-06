@@ -41,3 +41,15 @@ test('raw missing column cannot be overridden by a stale top-level zero', () => 
   assert.equal(h.value.financeMetric({ sharedWalletSpend: 0, columns: {'共享钱包消耗(元)': '--'} }, 'sharedWalletSpend', '共享钱包消耗(元)'), null);
   assert.equal(h.value.financeMetric({ sharedWalletSpend: 12.34 }, 'sharedWalletSpend', '共享钱包消耗(元)'), 12.34);
 });
+test('page and Excel use the same newest identity and balance', () => {
+  const old = { ...row(), updatedAt: '2026-10-03T00:00:00Z' }, newer = { ...row({ '余额总消耗(元)': 20, '总余额(元)': 80 }), updatedAt: '2026-10-03T01:00:00Z' };
+  const h = harness([old, newer]), sheets = h.export();
+  assert.equal(h.value.financeAccountRows([old, newer])[0].totalSpend, 20);
+  assert.equal(sheets[0].rows[1][1], 20); assert.equal(sheets[0].rows[1][6], 80);
+  assert.equal(sheets[1].rows.length, 2);
+});
+test('conflicting amounts remain unknown in summary and raw Excel', () => {
+  const sheets = harness([row(), row({ '余额总消耗(元)': 99 })]).export();
+  assert.equal(sheets[0].rows[1][1], ''); assert.equal(sheets[0].rows[1][6], '');
+  assert.ok(sheets[1].rows[1].slice(2).every(value => value === ''));
+});

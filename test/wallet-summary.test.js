@@ -3,7 +3,7 @@ const assert = require("node:assert/strict");
 const { amount, validDate, projectWallets, defaultFinanceRange } = require("../wallet-summary");
 
 const now = Date.parse("2026-10-02T12:00:00Z");
-const wallet = (overrides = {}) => ({ kind: "self", openingDate: "2026-09-29", openingBalance: 100, accounts: [{ advertiserId: "1872570326520138" }], ...overrides });
+const wallet = (overrides = {}) => ({ kind: "self", openingDate: "2026-09-30", openingBalance: 100, accounts: [{ advertiserId: "1872570326520138", openingDate: "2026-09-30", openingBalance: 100 }], ...overrides });
 const row = (date = "2026-10-01", overrides = {}) => ({
   advertiserId: "1872570326520138", date, sourceRangeStart: "2026-09-30", sourceRangeEnd: "2026-10-02", sourceRunId: "verified-run",
   updatedAt: "2026-10-02T10:00:00Z", columns: { "余额总消耗(元)": "20.00", "共享钱包消耗(元)": "0.00", "总余额(元)": "80.00", "总存入(元)": "0.00", "总转入(元)": "0.00", "总转出(元)": "0.00" }, ...overrides
@@ -47,15 +47,17 @@ test("invalid shared snapshot timestamp is disclosed as unavailable", () => {
   assert.equal(result.balanceReadAt, null);
   assert.equal(result.balanceStatus, "stale");
 });
-test("verified sparse source range supports actual missing-day exports without adding zero rows", () => {
+test("request range cannot certify sparse financial dates or add zero rows", () => {
   const source = [row()];
   const before = JSON.stringify(source);
-  assert.equal(project(wallet(), source).complete, true);
+  const result = project(wallet({ openingDate: "2026-09-29" }), source);
+  assert.equal(result.complete, false);
+  assert.equal(result.coverageComplete, false);
   assert.equal(JSON.stringify(source), before);
   assert.equal(source.length, 1);
 });
 test("unverified missing days suppress differences instead of declaring zero", () => {
-  const result = project(wallet(), [row("2026-10-01", { sourceRunId: null })]);
+  const result = project(wallet({ openingDate: "2026-09-29" }), [row("2026-10-01", { sourceRunId: null })]);
   assert.equal(result.complete, false);
   assert.equal(result.difference, null);
 });

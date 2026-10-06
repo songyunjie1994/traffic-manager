@@ -1,7 +1,7 @@
 "use strict";
 
 const STORAGE_KEY = "traffic_manager_data_v1";
-const APP_VERSION = "2.7.7";
+const APP_VERSION = "2.8.0";
 const CLOUD_ROW_ID = 2;
 const RECHARGE_WORKFLOW_VERSION = "2026-08-29-v1";
 // 早期版本会在首次迁移时补建这 6 个手工账户；现在账户全部来自千川采集，
@@ -35,6 +35,7 @@ const CLOUD_CONFIG = Object.freeze({
   url: "https://mabxdkjqilulkrmqrrgo.supabase.co",
   publishableKey: "sb_publishable_lfHpd1y1gCaQIDXfRkD_8w_O1bPMWGx",
 });
+const financeAuth = TrafficFinanceAuth.create(CLOUD_CONFIG);
 const PLATFORMS = ["巨量引擎", "千川", "小红书", "视频号", "快手", "百度", "其他"];
 const VIEW_META = {
   dashboard: ["查看云端财务汇总与原始明细", "对账端"],
@@ -276,24 +277,8 @@ function setCloudStatus(status, label) {
   text.textContent = label;
 }
 
-function cloudHeaders(prefer = "") {
-  const headers = {
-    "Content-Type": "application/json",
-    apikey: CLOUD_CONFIG.publishableKey,
-    Authorization: `Bearer ${CLOUD_CONFIG.publishableKey}`,
-  };
-  if (prefer) headers.Prefer = prefer;
-  return headers;
-}
-
 async function readCloudDocument() {
-  const response = await fetch(`${CLOUD_CONFIG.url}/rest/v1/app_data?select=data&id=eq.${CLOUD_ROW_ID}`, {
-    headers: cloudHeaders(),
-    cache: "no-store",
-    signal: AbortSignal.timeout(15000),
-  });
-  if (!response.ok) throw new Error(`云端读取失败（${response.status}）`);
-  const rows = await response.json();
+  const rows = await financeAuth.cloud("read");
   if (!rows[0]?.data) return null;
   return rows[0].data;
 }
@@ -306,36 +291,14 @@ async function fetchCloudState() {
 }
 
 async function createCloudState(candidate) {
-  const migrated = normalizeState({
-    ...candidate,
-    settings: {
-      ...candidate.settings,
-      cloudInitializedAt: new Date().toISOString(),
-      cloudSource: "traffic-manager",
-    },
-  });
-  const response = await fetch(`${CLOUD_CONFIG.url}/rest/v1/app_data`, {
-    method: "POST",
-    headers: cloudHeaders("return=representation"),
-    body: JSON.stringify({ id: CLOUD_ROW_ID, data: migrated }),
-  });
-  if (response.status === 409) return (await fetchCloudState()) || migrated;
-  if (!response.ok) throw new Error(`云端初始化失败（${response.status}）`);
-  const rows = await response.json();
-  lastCloudRawState = structuredClone(rows[0]?.data || migrated);
-  return rows[0]?.data ? normalizeState(rows[0].data) : migrated;
+  throw new Error("云端业务文档缺失，不使用浏览器缓存初始化或覆盖");
 }
 
 async function updateCloudState(candidate) {
   if (!lastCloudRawState) throw new Error("缺少云端版本快照，未保存修改");
   const expected = structuredClone(lastCloudRawState);
-  const response = await fetch(`${CLOUD_CONFIG.url}/rest/v1/rpc/traffic_manager_compare_and_swap`, {
-    method: "POST",
-    headers: cloudHeaders(),
-    body: JSON.stringify({ p_row_id: String(CLOUD_ROW_ID), p_expected: expected, p_next: candidate }),
-  });
-  if (!response.ok) throw new Error(`云端保存失败（${response.status}）`);
-  if (await response.json() !== true) {
+  const changed = await financeAuth.cloud("cas", { p_row_id: String(CLOUD_ROW_ID), p_expected: expected, p_next: candidate });
+  if (changed !== true) {
     const error = new Error("云端数据已被其他端修改，本次未覆盖");
     error.code = "cloud_conflict";
     throw error;
@@ -347,32 +310,16 @@ async function initializeCloud() {
   setCloudStatus("syncing", "正在连接云端");
   try {
     const cloudState = await fetchCloudState();
-    if (cloudState?.settings?.bootstrapPending) {
-      const localMigration = migrateRechargeWorkflow({
-        ...state,
-        settings: {
-          ...state.settings,
-          bootstrapPending: false,
-          cloudInitializedAt: new Date().toISOString(),
-          cloudSource: "traffic-manager",
-        },
-      });
-      state = localMigration.state;
-      await updateCloudState(state);
-    } else if (cloudState) {
-      const cloudMigration = migrateRechargeWorkflow(cloudState);
-      state = cloudMigration.state;
-      if (cloudMigration.changed) await updateCloudState(state);
-    } else {
-      state = migrateRechargeWorkflow(state).state;
-      state = await createCloudState(state);
-    }
+    if (!cloudState || cloudState.settings?.bootstrapPending) throw new Error("云端业务数据未就绪，不使用缓存覆盖");
+    state = cloudState;
     cloudReady = true;
     cacheState(state);
     lastCloudSnapshot = JSON.stringify(state);
     lastCloudRefreshAt = Date.now();
     setCloudStatus("synced", "云端已同步");
     renderAll();
+    $("#financeLogin").hidden = true;
+    $("#financeApplication").hidden = false;
     return true;
   } catch (error) {
     cloudReady = false;
@@ -380,6 +327,7 @@ async function initializeCloud() {
     setCloudStatus("offline", "云端连接失败");
     console.error(error);
     toast("云端连接失败，当前仅显示本地缓存，暂时不能修改数据", "error");
+    if (error.code === "login_required") showFinanceLogin(error.message);
     return false;
   }
 }
@@ -430,6 +378,7 @@ async function refreshCloudState() {
     const badge = $("#dataModeBadge");
     if (badge) badge.textContent = "本地缓存";
     renderWallets();
+    if (error.code === "login_required") showFinanceLogin(error.message);
   } finally {
     cloudRefreshInFlight = false;
   }
@@ -632,7 +581,7 @@ function renderWallets() {
       <td data-label="子钱包" class="cell-main"><span class="cell-value"><strong>${escapeHtml(wallet.name || "—")}</strong>${wallet.walletId ? `<small>${escapeHtml(wallet.walletId)}</small>` : ""}${liveLine}</span></td>
       <td data-label="类型"><span class="cell-value">${wallet.kind === "shared" ? "共享子钱包" : "自身"}</span></td>
       <td data-label="挂靠账户" class="cell-main">${accountCell}${coverage}</td>
-      <td data-label="期初(8/31)" class="number-cell"><span class="cell-value">${cell(wallet.openingBalance ?? wallet.balanceAug31)}</span></td>
+      <td data-label="钱包期初" class="number-cell"><span class="cell-value">${cell(wallet.openingBalance ?? wallet.balanceAug31)}<small>${escapeHtml(wallet.openingDate || "日期缺失")}</small></span></td>
       <td data-label="日结净入金" class="number-cell"><span class="cell-value">${cell(summary.periodCredit)}${historicalCredit}</span></td>
       <td data-label="已采日结消耗" class="number-cell"><span class="cell-value">${cell(summary.periodSpend)}<small>${escapeHtml(range)}</small><small>${wallet.kind === "shared" ? "仅共享钱包扣款，不含账户余额扣款" : "账户余额消耗"}</small></span></td>
       <td data-label="日结/快照余额" class="number-cell"><span class="cell-value"><strong>${cell(summary.balance)}</strong><small>${escapeHtml(balanceLabel)}</small></span></td>
@@ -725,8 +674,7 @@ function financeNumber(value) {
 }
 
 function financeMetric(record, field, columnName) {
-  if (record?.columns?.[columnName] !== undefined) return financeNumber(record.columns[columnName]);
-  return financeNumber(record?.[field]);
+  return TrafficWalletSummary.metric(record, field, columnName);
 }
 
 function financeAdd(...values) {
@@ -744,7 +692,7 @@ function filteredFinanceRecords() {
   const start = $("#financeStartDate")?.value || "";
   const end = $("#financeEndDate")?.value || "";
   const account = $("#financeAccountFilter")?.value || "all";
-  return (state.financeRecords || []).filter((record) => {
+  return TrafficWalletSummary.normalizeFinance(state.financeRecords || []).records.filter((record) => {
     const date = String(record.date || record.columns?.日期 || "");
     return (!start || date >= start) && (!end || date <= end) && (account === "all" || financeAccountKey(record) === account);
   });
@@ -757,7 +705,7 @@ function financeDetailColumns(records) {
 
 function financeAccountRows(records) {
   const groups = new Map();
-  records.forEach((record) => {
+  TrafficWalletSummary.normalizeFinance(records).records.forEach((record) => {
     const key = financeAccountKey(record) || financeAccountLabel(record);
     const row = groups.get(key) || { key, label: financeAccountLabel(record), totalSpend: 0, walletSpend: 0, nonGrantSpend: 0, giftSpend: 0, latest: null };
     row.totalSpend = financeAdd(row.totalSpend, financeMetric(record, "balanceTotalSpend", "余额总消耗(元)"));
@@ -765,7 +713,8 @@ function financeAccountRows(records) {
     row.walletSpend = financeAdd(row.walletSpend, financeMetric(record, "sharedWalletSpend", "共享钱包消耗(元)"));
     row.nonGrantSpend = financeAdd(row.nonGrantSpend, financeMetric(record, "nonGrantSpend", "非赠款消耗(元)"));
     row.giftSpend = financeAdd(row.giftSpend, financeMetric(record, "giftSpend", "赠款消耗(元)"));
-    if (!row.latest || String(record.date || "") > String(row.latest.date || "")) row.latest = record;
+    if (!row.latest || String(record.date || "") > String(row.latest.date || "")
+      || (record.date === row.latest.date && TrafficWalletSummary.recordTime(record) > TrafficWalletSummary.recordTime(row.latest))) row.latest = record;
     groups.set(key, row);
   });
   return [...groups.values()].sort((a, b) => (b.totalSpend + b.walletSpend) - (a.totalSpend + a.walletSpend) || a.label.localeCompare(b.label, "zh"));
@@ -794,6 +743,8 @@ function renderDashboard() {
   const rangeText = start || end ? `${start ? formatDate(start) : "最早"} — ${end ? formatDate(end) : "最新"}` : "全部日期";
 
   $("#dashboardSummary").textContent = rows.length ? `${rangeText}，共 ${accounts.length} 个账户、${rows.length} 条云端财务明细。` : "当前筛选范围暂无财务数据。";
+  const quality = TrafficWalletSummary.normalizeFinance(state.financeRecords || []);
+  $("#dashboardSummary").textContent += ` 去重 ${quality.duplicatesRemoved} 条；冲突 ${quality.conflicts.length} 组；无效身份/日期 ${quality.invalidRecords.length} 条。冲突金额不计为零。`;
   $("#financeRangeLabel").textContent = rangeText;
   $("#financeTrueSpend").textContent = financeMoney(financeAdd(totalSpend, walletSpend));
   $("#financeWalletSpend").textContent = financeMoney(walletSpend);
@@ -814,9 +765,9 @@ function renderDashboard() {
       <td data-label="合计消耗" class="number-cell"><span class="cell-value"><strong>${financeMoney(financeAdd(account.totalSpend, account.walletSpend))}</strong></span></td>
       <td data-label="非赠款消耗" class="number-cell"><span class="cell-value">${financeMoney(account.nonGrantSpend)}</span></td>
       <td data-label="赠款消耗" class="number-cell"><span class="cell-value">${financeMoney(account.giftSpend)}</span></td>
-      <td data-label="最新总余额" class="number-cell"><span class="cell-value">${financeMoney(financeNumber(columns["总余额(元)"]))}</span></td>
-      <td data-label="非赠款余额" class="number-cell"><span class="cell-value">${financeMoney(financeNumber(columns["非赠款余额(元)"]))}</span></td>
-      <td data-label="赠款余额" class="number-cell"><span class="cell-value">${financeMoney(financeNumber(columns["赠款余额(元)"]))}</span></td>
+      <td data-label="最新总余额" class="number-cell"><span class="cell-value">${financeMoney(financeMetric(latest, "balance", "总余额(元)"))}</span></td>
+      <td data-label="非赠款余额" class="number-cell"><span class="cell-value">${financeMoney(financeMetric(latest, "nonGrantBalance", "非赠款余额(元)"))}</span></td>
+      <td data-label="赠款余额" class="number-cell"><span class="cell-value">${financeMoney(financeMetric(latest, "giftBalance", "赠款余额(元)"))}</span></td>
       <td data-label="余额日期"><span class="cell-value">${formatDate(latest.date || columns.日期)}</span></td>
     </tr>`;
   }).join("");
@@ -825,14 +776,32 @@ function renderDashboard() {
   $("#financeDetailHead").innerHTML = `<th>日期</th><th>广告账户</th>${columns.map((column) => `<th class="number-cell">${escapeHtml(column)}</th>`).join("")}`;
   $("#financeDetailBody").innerHTML = rows.map((record) => `<tr>
     <td>${formatDate(record.date || record.columns?.日期)}</td>
-    <td class="cell-main"><strong>${escapeHtml(financeAccountLabel(record))}</strong></td>
-    ${columns.map((column) => `<td class="number-cell">${financeMoney(financeNumber(record.columns?.[column]))}</td>`).join("")}
+    <td class="cell-main"><strong>${escapeHtml(financeAccountLabel(record))}</strong>${record.ambiguous ? "<small>同日版本冲突，金额待核验</small>" : ""}</td>
+    ${columns.map((column) => `<td class="number-cell">${financeMoney(record.ambiguous ? null : financeNumber(record.columns?.[column]))}</td>`).join("")}
   </tr>`).join("");
 
   const hasRows = rows.length > 0;
   $("#financeAccountPanel").classList.toggle("hidden", !hasRows);
   $("#financeDetailPanel").classList.toggle("hidden", !hasRows);
   $("#financeEmptyState").classList.toggle("hidden", hasRows);
+  renderFinanceChecks(start, end);
+}
+
+function renderFinanceChecks(start, end) {
+  const panel = $("#financeChecksBody");
+  if (!panel) return;
+  const wallets = TrafficWalletSummary.projectWallets(state, { offline: !cloudReady });
+  const funding = TrafficWalletSummary.projectFunding(state, { start, end });
+  const checks = wallets.flatMap(summary => summary.accountChecks.map(check => ({ ...check, broker: summary.wallet.broker })));
+  panel.innerHTML = `<p>账户余额核验采用各钱包完整期初区间，不随明细筛选改变。充值比对范围：${escapeHtml(start || "最早")}—${escapeHtml(end || "最新")}。${escapeHtml(funding.message)}</p>
+    <div class="table-scroll"><table><thead><tr><th>中介 / 账户</th><th>期初依据</th><th>日期缺口</th><th>逐日异常</th><th>账户差额</th><th>余额核验</th></tr></thead><tbody>${checks.map(check => `<tr>
+      <td>${escapeHtml(check.broker || "")} / ${escapeHtml(check.name)}</td>
+      <td>${escapeHtml({ platform: "平台前日日结", account: "独立账户期初", inferred: "首日反推，未独立验证", missing: "缺失" }[check.openingSource])}</td>
+      <td>${check.missingDates.length}${check.missingDates.length ? `<small>${escapeHtml(check.missingDates.join("、"))}</small>` : ""}</td>
+      <td>${check.errors.length}${check.errors.length ? `<small>${escapeHtml(check.errors.map(error => `${error.date} ${error.type} 差额${error.difference}`).join("；"))}</small>` : ""}</td>
+      <td>${financeMoney(check.difference)}</td><td>${escapeHtml({ balanced: "账户余额通过（充值另核验）", pending: "待核验", mismatch: "异常，不通过" }[check.status])}</td></tr>`).join("")}</tbody></table></div>
+    <h3>充值 / 现金到账核验</h3><p>未分配到唯一账户的充值 ${funding.unallocated} 笔；付款 ${funding.paymentCount} 笔；待处理事项 ${funding.issues.length} 项。缺现金/赠款列时不把总存入当现金。</p>
+    <details><summary>查看现金到账比对与待处理事项</summary><div class="table-scroll"><table><thead><tr><th>账户</th><th>日期</th><th>登记本金</th><th>登记返点</th><th>平台总存入</th><th>平台现金</th><th>平台赠款</th><th>现金差额</th></tr></thead><tbody>${funding.groups.map(row => `<tr><td>${escapeHtml(row.name)}</td><td>${escapeHtml(row.date)}</td>${[row.registeredCash, row.registeredGrant, row.platformDeposit, row.platformCash, row.platformGrant, row.difference].map(value => `<td>${financeMoney(value)}</td>`).join("")}</tr>`).join("")}</tbody></table></div><ul>${funding.issues.map(issue => `<li>${escapeHtml([issue.date, issue.broker, issue.id, issue.reason].filter(Boolean).join(" · "))}</li>`).join("")}</ul></details>`;
 }
 
 function trendNote(current, previous, label) {
@@ -1048,15 +1017,14 @@ function fileToDataUrl(file) {
 async function callPaymentRecognition(dataUrl) {
   const response = await fetch(ZHIPU_VISION_CONFIG.url, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      apikey: CLOUD_CONFIG.publishableKey,
-    },
+    headers: { "Content-Type": "application/json", apikey: CLOUD_CONFIG.publishableKey, Authorization: `Bearer ${await financeAuth.token()}` },
     body: JSON.stringify({ imageDataUrl: dataUrl }),
   });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
     const errorMessages = {
+      LOGIN_REQUIRED: "请先登录管理员账号",
+      NOT_ADMIN: "当前账号没有财务凭证权限",
       AI_NOT_CONFIGURED: "云端 AI Key 尚未配置，请联系管理员",
       AI_AUTH_FAILED: "云端 AI Key 无效或已过期",
       AI_RATE_LIMITED: "AI 调用过于频繁，请稍后再试",
@@ -1074,8 +1042,8 @@ async function callPaymentRecognition(dataUrl) {
 }
 
 // 查看已保存的付款凭证（图片存在 Supabase 私有空间，按路径取回）
-async function showPaymentReceiptImage(imagePath) {
-  if (!imagePath) return;
+async function showPaymentReceiptImage(recordId) {
+  if (!recordId) return;
   // 图片从私有空间拉回来要几秒：先开弹窗显示加载态，别让用户以为按钮没反应
   $("#receiptImage").removeAttribute("src");
   $("#receiptImageModal").classList.add("is-loading");
@@ -1083,11 +1051,8 @@ async function showPaymentReceiptImage(imagePath) {
   try {
     const response = await fetch(ZHIPU_VISION_CONFIG.url, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        apikey: CLOUD_CONFIG.publishableKey,
-      },
-      body: JSON.stringify({ action: "get-image", imagePath }),
+      headers: { "Content-Type": "application/json", apikey: CLOUD_CONFIG.publishableKey, Authorization: `Bearer ${await financeAuth.token()}` },
+      body: JSON.stringify({ action: "get-image", recordId }),
     });
     if (!response.ok) throw new Error("凭证图片读取失败");
     const blob = await response.blob();
@@ -1843,9 +1808,9 @@ function exportFinanceExcel() {
         financeExportNumber(financeAdd(account.totalSpend, account.walletSpend)),
         financeExportNumber(account.nonGrantSpend),
         financeExportNumber(account.giftSpend),
-        financeExportNumber(financeNumber(source["总余额(元)"])),
-        financeExportNumber(financeNumber(source["非赠款余额(元)"])),
-        financeExportNumber(financeNumber(source["赠款余额(元)"])),
+        financeExportNumber(financeMetric(latest, "balance", "总余额(元)")),
+        financeExportNumber(financeMetric(latest, "nonGrantBalance", "非赠款余额(元)")),
+        financeExportNumber(financeMetric(latest, "giftBalance", "赠款余额(元)")),
         latest.date || source.日期 || "",
       ];
     }),
@@ -1865,12 +1830,21 @@ function exportFinanceExcel() {
     ...records.map((record) => [
       record.date || record.columns?.日期 || "",
       financeAccountLabel(record),
-      ...columns.map((column) => financeExportNumber(financeNumber(record.columns?.[column]))),
+      ...columns.map((column) => financeExportNumber(record.ambiguous ? null : financeNumber(record.columns?.[column]))),
     ]),
   ];
+  const checks = TrafficWalletSummary.projectWallets(state, { offline: !cloudReady }).flatMap(summary => summary.accountChecks.map(check => [
+    summary.wallet.broker || "", check.name, check.advertiserId, summary.startDate || "", summary.endDate || "", check.openingSource,
+    financeExportNumber(check.opening), financeExportNumber(check.closing), financeExportNumber(check.difference), check.status,
+    check.missingDates.join("、"), check.errors.map(error => `${error.date} ${error.type} 差额${error.difference}`).join("；")
+  ]));
+  const funding = TrafficWalletSummary.projectFunding(state, { start: $("#financeStartDate")?.value || "", end: $("#financeEndDate")?.value || "" });
   window.TrafficExcel.downloadWorkbook(`财务报表-${localDate()}.xlsx`, [
     { name: "财务汇总", rows: summaryRows },
     { name: "财务明细", rows: detailRows },
+    { name: "钱包全区间余额核验", rows: [["中介", "账户", "广告账户ID", "钱包起始", "钱包截止", "期初依据", "期初", "期末", "差额", "余额状态", "缺失日期", "逐日异常"], ...checks] },
+    { name: "充值待处理", rows: [["日期", "中介", "记录ID", "待处理事项"], ...funding.issues.map(issue => [issue.date || "", issue.broker || "", issue.id || "", issue.reason])] },
+    { name: "现金到账比对", rows: [["账户", "日期", "登记本金", "登记返点", "平台总存入", "平台现金", "平台赠款", "现金差额", "状态（金额一致非流水凭据）"], ...funding.groups.map(row => [row.name, row.date, ...[row.registeredCash, row.registeredGrant, row.platformDeposit, row.platformCash, row.platformGrant, row.difference].map(financeExportNumber), row.status])] },
   ]);
   toast(`已导出 ${accounts.length} 个账户、${records.length} 条财务明细`);
 }
@@ -1992,7 +1966,7 @@ function bindEvents() {
     const recharge = state.recharges.find((item) => item.id === button.dataset.id);
     if (button.dataset.action === "edit-ledger") recharge?.recordType === "payment" ? openPaymentModal(recharge) : openRechargeModal(recharge);
     if (button.dataset.action === "delete-ledger") deleteRecharge(button.dataset.id);
-    if (button.dataset.action === "view-payment-image") showPaymentReceiptImage(recharge?.imagePath);
+    if (button.dataset.action === "view-payment-image") showPaymentReceiptImage(recharge?.id);
     if (button.dataset.action === "attach-payment-image" && recharge) openPaymentModal(recharge);
   });
 
@@ -2047,6 +2021,13 @@ function bindEvents() {
   });
 }
 
+function showFinanceLogin(message = "") {
+  cloudReady = false;
+  $("#financeApplication").hidden = true;
+  $("#financeLogin").hidden = false;
+  $("#financeLoginError").textContent = message;
+}
+
 function initialize() {
   $("#dashboardDate").value = localDate();
   $("#financeStartDate").value = "";
@@ -2054,10 +2035,26 @@ function initialize() {
   $("#recordStartDate").value = localDate(-6);
   $("#recordEndDate").value = localDate();
   bindEvents();
-  renderAll();
-  cloudInitializationPromise = initializeCloudWithRetry().finally(() => { cloudInitializationFinished = true; });
+  $("#financeLoginForm").addEventListener("submit", async event => {
+    event.preventDefault();
+    const button = event.submitter;
+    if (button) button.disabled = true;
+    try {
+      await financeAuth.signIn($("#financeLoginEmail").value.trim(), $("#financeLoginPassword").value);
+      $("#financeLoginPassword").value = "";
+      cloudInitializationPromise = initializeCloudWithRetry(1).finally(() => { cloudInitializationFinished = true; });
+      await cloudInitializationPromise;
+      if (!cloudReady) showFinanceLogin("登录或财务访问校验未通过，请重试");
+    } catch (error) { showFinanceLogin(error.message); }
+    finally { $("#financeLoginPassword").value = ""; if (button) button.disabled = false; }
+  });
+  $("#financeSignOut").addEventListener("click", () => {
+    financeAuth.signOut(); state = emptyState(); lastCloudRawState = null; lastCloudSnapshot = ""; showFinanceLogin();
+  });
+  if (financeAuth.hasSession()) cloudInitializationPromise = initializeCloudWithRetry(1).finally(() => { cloudInitializationFinished = true; });
+  else showFinanceLogin();
   setInterval(() => {
-    if (!document.hidden) refreshCloudState();
+    if (!document.hidden && financeAuth.hasSession()) refreshCloudState();
   }, 60000);
 }
 

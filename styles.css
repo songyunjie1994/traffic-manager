@@ -3586,3 +3586,5 @@ tbody tr:hover td {
   }
 }
 
+/* Authenticated data must remain hidden even when layout classes set display. */
+[hidden] { display: none !important; }

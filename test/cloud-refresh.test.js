@@ -73,6 +73,6 @@ test("overlapping refreshes, saves, editor and initialization are skipped", asyn
   }
 });
 test("browser timer only refreshes visible page, with a bounded read timeout", () => {
-  assert.match(source, /setInterval\(\(\) => \{\s*if \(!document\.hidden\) refreshCloudState\(\);\s*\}, 60000\)/);
-  assert.match(source, /signal: AbortSignal\.timeout\(15000\)/);
+  assert.match(source, /setInterval\(\(\) => \{\s*if \(!document\.hidden && financeAuth\.hasSession\(\)\) refreshCloudState\(\);\s*\}, 60000\)/);
+  assert.match(fs.readFileSync(path.join(__dirname, '../finance-auth.js'), 'utf8'), /signal: AbortSignal\.timeout\(15000\)/);
 });
