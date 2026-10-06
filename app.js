@@ -1,7 +1,7 @@
 "use strict";
 
 const STORAGE_KEY = "traffic_manager_data_v1";
-const APP_VERSION = "2.8.1";
+const APP_VERSION = "2.8.2";
 const CLOUD_ROW_ID = 2;
 const RECHARGE_WORKFLOW_VERSION = "2026-08-29-v1";
 // 早期版本会在首次迁移时补建这 6 个手工账户；现在账户全部来自千川采集，
@@ -801,7 +801,7 @@ function renderFinanceChecks(start, end) {
       <td data-label="逐日异常">${check.errors.length}${check.errors.length ? `<small>${escapeHtml(check.errors.map(error => `${error.date} ${error.type} 差额${error.difference}`).join("；"))}</small>` : ""}</td>
       <td data-label="账户差额">${financeMoney(check.difference)}</td><td data-label="余额核验">${escapeHtml({ balanced: "账户余额通过（充值另核验）", pending: "待核验", mismatch: "异常，不通过" }[check.status])}</td></tr>`).join("")}</tbody></table></div>
     <h3>充值 / 现金到账核验</h3><p>未分配到唯一账户的充值 ${funding.unallocated} 笔；付款 ${funding.paymentCount} 笔；待处理事项 ${funding.issues.length} 项。缺现金/赠款列时不把总存入当现金。</p>
-    <details><summary>查看现金到账比对与待处理事项</summary><div class="table-scroll"><table><thead><tr><th>账户</th><th>日期</th><th>登记本金</th><th>登记返点</th><th>平台总存入</th><th>平台现金</th><th>平台赠款</th><th>现金差额</th></tr></thead><tbody>${funding.groups.map(row => `<tr><td>${escapeHtml(row.name)}</td><td>${escapeHtml(row.date)}</td>${[row.registeredCash, row.registeredGrant, row.platformDeposit, row.platformCash, row.platformGrant, row.difference].map(value => `<td>${financeMoney(value)}</td>`).join("")}</tr>`).join("")}</tbody></table></div><ul>${funding.issues.map(issue => `<li>${escapeHtml([issue.date, issue.broker, issue.id, issue.reason].filter(Boolean).join(" · "))}</li>`).join("")}</ul></details>`;
+    <details><summary>查看现金到账比对与待处理事项（表格可左右滑动）</summary><div class="table-scroll"><table><thead><tr><th>账户</th><th>日期</th><th>已分配登记本金</th><th>登记中介返点</th><th>登记到账现金</th><th>登记平台赠款</th><th>平台总存入</th><th>平台现金</th><th>平台赠款</th><th>现金差额</th></tr></thead><tbody>${funding.groups.map(row => `<tr><td>${escapeHtml(row.name)}</td><td>${escapeHtml(row.date)}</td>${[row.registeredPrincipal, row.registeredRebate, row.registeredCash, row.registeredGrant, row.platformDeposit, row.platformCash, row.platformGrant, row.difference].map(value => `<td>${financeMoney(value)}</td>`).join("")}</tr>`).join("")}</tbody></table></div><ul>${funding.issues.map(issue => `<li>${escapeHtml([issue.date, issue.broker, issue.id, issue.reason].filter(Boolean).join(" · "))}</li>`).join("")}</ul></details>`;
 }
 
 function trendNote(current, previous, label) {
@@ -1844,7 +1844,7 @@ function exportFinanceExcel() {
     { name: "财务明细", rows: detailRows },
     { name: "钱包全区间余额核验", rows: [["中介", "账户", "广告账户ID", "钱包起始", "钱包截止", "期初依据", "期初", "期末", "差额", "余额状态", "缺失日期", "逐日异常"], ...checks] },
     { name: "充值待处理", rows: [["日期", "中介", "记录ID", "待处理事项"], ...funding.issues.map(issue => [issue.date || "", issue.broker || "", issue.id || "", issue.reason])] },
-    { name: "现金到账比对", rows: [["账户", "日期", "登记本金", "登记返点", "平台总存入", "平台现金", "平台赠款", "现金差额", "状态（金额一致非流水凭据）"], ...funding.groups.map(row => [row.name, row.date, ...[row.registeredCash, row.registeredGrant, row.platformDeposit, row.platformCash, row.platformGrant, row.difference].map(financeExportNumber), row.status])] },
+    { name: "现金到账比对", rows: [["账户", "日期", "已分配登记本金", "登记中介返点", "登记到账现金", "登记平台赠款", "平台总存入", "平台现金", "平台赠款", "现金差额", "状态（金额一致非流水凭据）"], ...funding.groups.map(row => [row.name, row.date, ...[row.registeredPrincipal, row.registeredRebate, row.registeredCash, row.registeredGrant, row.platformDeposit, row.platformCash, row.platformGrant, row.difference].map(financeExportNumber), row.status])] },
   ]);
   toast(`已导出 ${accounts.length} 个账户、${records.length} 条财务明细`);
 }

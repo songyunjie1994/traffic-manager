@@ -71,7 +71,7 @@ test('offline and repeated wallet ownership cannot pass', () => {
 });
 const fundingData = () => ({ wallets: [wallet(['A'])], campaigns: [{ id: 'c', advertiserId: 'A' }], financeRecords: [row('A', '2026-10-01', 0, 100, { '总存入(元)': 110, '现金存入(元)': 100, '赠款存入(元)': 10 })], recharges: [
   { id: 'p', recordType: 'payment', status: '已付款', date: '2026-10-01', amount: 100, amountCurrency: 'CNY' },
-  { id: 'r', recordType: 'recharge', status: '已充值', campaignId: 'c', date: '2026-10-01', baseAmount: 100, rebateAmount: 10, amount: 110, sourcePaymentId: 'p' }
+  { id: 'r', recordType: 'recharge', status: '已充值', campaignId: 'c', date: '2026-10-01', baseAmount: 100, rebateAmount: 10, cashCreditAmount: 100, giftCreditAmount: 10, amount: 110, sourcePaymentId: 'p' }
 ] });
 test('cash and grant are independently compared, equality is not receipt proof', () => {
   const result = projectFunding(fundingData());
@@ -85,6 +85,18 @@ test('real cash mismatch is visible', () => {
 test('unknown cash breakdown cannot use total deposit as cash', () => {
   const d = fundingData(); delete d.financeRecords[0].columns['现金存入(元)'];
   assert.equal(projectFunding(d).groups[0].difference, null);
+});
+test('broker rebate cannot be silently classified as a platform grant', () => {
+  const d = fundingData(); delete d.recharges[1].cashCreditAmount; delete d.recharges[1].giftCreditAmount;
+  const result = projectFunding(d);
+  assert.equal(result.groups[0].registeredPrincipal, 100); assert.equal(result.groups[0].registeredRebate, 10);
+  assert.equal(result.groups[0].registeredCash, null); assert.equal(result.groups[0].registeredGrant, null); assert.equal(result.groups[0].difference, null);
+  assert.ok(result.issues.some(row => /中介返点/.test(row.reason)));
+});
+test('rebate arriving as ordinary cash is not counted as a grant', () => {
+  const d = fundingData(); d.recharges[1].cashCreditAmount = 110; d.recharges[1].giftCreditAmount = 0;
+  d.financeRecords[0].columns['现金存入(元)'] = 110; d.financeRecords[0].columns['赠款存入(元)'] = 0;
+  assert.equal(projectFunding(d).groups[0].difference, 0); assert.equal(projectFunding(d).groups[0].registeredGrant, 0);
 });
 test('unassigned ledger does not get guessed by broker name', () => {
   const d = fundingData(); delete d.recharges[1].campaignId; d.recharges[1].broker = 'same broker';

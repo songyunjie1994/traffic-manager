@@ -276,7 +276,7 @@
     for (const wallet of data.wallets || []) for (const account of wallet.accounts || []) accountWallets.set(String(account.advertiserId), [...(accountWallets.get(String(account.advertiserId)) || []), wallet]);
     const group = (id, date) => {
       const key = `${id}|${date}`;
-      if (!groups.has(key)) groups.set(key, { advertiserId: id, date, name: id, registeredCash: 0, registeredGrant: 0, registeredTotal: 0, registrationCount: 0, issueCount: 0, platformDeposit: null, platformCash: null, platformGrant: null, difference: null, status: "pending" });
+      if (!groups.has(key)) groups.set(key, { advertiserId: id, date, name: id, registeredPrincipal: 0, registeredRebate: 0, registeredCash: 0, registeredGrant: 0, registeredTotal: 0, registrationCount: 0, issueCount: 0, platformDeposit: null, platformCash: null, platformGrant: null, difference: null, status: "pending" });
       return groups.get(key);
     };
     for (const row of finance) {
@@ -304,8 +304,12 @@
         unallocated++;
         problems.push(!id ? "未指定广告账户/钱包，不能按中介名称猜分摊" : wallets.length !== 1 ? "账户钱包归属不唯一" : "共享钱包充值不能与广告账户存入混用");
       }
-      const total = amount(row.amount), cash = amount(row.baseAmount), grant = amount(row.rebateAmount);
-      if (total === null || cash === null || grant === null || rounded(cash + grant - total) !== 0) problems.push("登记本金/返点/总到账金额缺失或不一致");
+      const total = amount(row.amount), principal = amount(row.baseAmount), rebate = amount(row.rebateAmount);
+      // Broker rebate is not necessarily a platform grant: it may arrive as
+      // ordinary cash. Require an explicit credited cash/grant allocation.
+      const cash = amount(row.cashCreditAmount), grant = amount(row.giftCreditAmount);
+      if (total === null || principal === null || rebate === null || rounded(principal + rebate - total) !== 0) problems.push("登记本金/返点/总到账金额缺失或不一致");
+      if (cash === null || grant === null || total === null || rounded(cash + grant - total) !== 0) problems.push("到账现金/平台赠款未明确拆分；中介返点不自动视为赠款");
       const ref = String(row.reference || "").trim();
       if (ref) {
         const key = `${id}|${ref}`;
@@ -315,13 +319,15 @@
       if (row.sourcePaymentId) {
         const payment = payments.get(row.sourcePaymentId);
         if (!payment || payment.status !== "已付款") problems.push("关联付款不存在或未确认付款");
-        else if (payment.amountCurrency !== "CNY" || amount(payment.amount) !== cash) problems.push("关联付款人民币金额与登记本金不一致");
+        else if (payment.amountCurrency !== "CNY" || amount(payment.amount) !== principal) problems.push("关联付款人民币金额与登记本金不一致");
         if ((data.recharges || []).filter(other => other.recordType === "recharge" && other.sourcePaymentId === row.sourcePaymentId).length !== 1) problems.push("同一付款关联多笔充值，需要拆分凭据");
       } else problems.push("未关联付款凭证");
       if (id && validDate(row.date) && wallets.length === 1 && wallets[0].kind !== "shared") {
         const result = group(id, row.date);
         result.registrationCount++;
         result.issueCount += problems.length;
+        result.registeredPrincipal = result.registeredPrincipal === null || principal === null ? null : rounded(result.registeredPrincipal + principal);
+        result.registeredRebate = result.registeredRebate === null || rebate === null ? null : rounded(result.registeredRebate + rebate);
         result.registeredCash = result.registeredCash === null || cash === null ? null : rounded(result.registeredCash + cash);
         result.registeredGrant = result.registeredGrant === null || grant === null ? null : rounded(result.registeredGrant + grant);
         result.registeredTotal = result.registeredTotal === null || total === null ? null : rounded(result.registeredTotal + total);
@@ -338,7 +344,7 @@
       }
     }
     return { groups: [...groups.values()], issues, unallocated, paymentCount, status: "pending",
-      message: "现金到账与赠款分开；未分配充值不猜分摊，金额一致也不是逐笔到账凭证。" };
+      message: "现金到账与平台赠款分开，中介返点不自动视为赠款；未分配充值不猜分摊，金额一致也不是逐笔到账凭证。" };
   }
 
   return { amount, validDate, metric, recordTime, normalizeFinance, coversRange, projectWallets, projectFunding, defaultFinanceRange };
