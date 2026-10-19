@@ -1,7 +1,7 @@
 "use strict";
 
 const STORAGE_KEY = "traffic_manager_data_v1";
-const APP_VERSION = "2.8.2";
+const APP_VERSION = "2.8.5";
 const CLOUD_ROW_ID = 2;
 const RECHARGE_WORKFLOW_VERSION = "2026-08-29-v1";
 // 早期版本会在首次迁移时补建这 6 个手工账户；现在账户全部来自千川采集，
@@ -1241,10 +1241,11 @@ function filteredRecords() {
 function recordMetrics(record) {
   const totalSpend = Number(record.totalSpend ?? record.spend ?? 0) || 0;
   const totalRevenue = Number(record.totalRevenue ?? record.revenue ?? 0) || 0;
-  const netRevenue = Number(record.netRevenue ?? 0) || 0;
+  const netRevenue = record.netRevenue == null || record.netRevenue === "" || !Number.isFinite(Number(record.netRevenue))
+    ? null : Number(record.netRevenue);
   const roi = record.roi != null ? Number(record.roi) : (totalSpend > 0 ? totalRevenue / totalSpend : 0);
-  const netRoi = record.netRoi != null ? Number(record.netRoi) : (totalSpend > 0 ? netRevenue / totalSpend : 0);
-  return { totalSpend, totalRevenue, netRevenue, roi: Number.isFinite(roi) ? roi : 0, netRoi: Number.isFinite(netRoi) ? netRoi : 0 };
+  const netRoi = netRevenue === null ? null : (totalSpend > 0 ? netRevenue / totalSpend : 0);
+  return { totalSpend, totalRevenue, netRevenue, roi: Number.isFinite(roi) ? roi : 0, netRoi: Number.isFinite(netRoi) ? netRoi : null };
 }
 
 // 消耗端展示口径（2026-09-12）：同一天 + 同达人昵称 + 同抖音号的多条记录
@@ -1278,7 +1279,7 @@ function displayRecordGroups(rows) {
     });
     group.totalSpend += metrics.totalSpend;
     group.totalRevenue += metrics.totalRevenue;
-    group.netRevenue += metrics.netRevenue;
+    group.netRevenue = group.netRevenue === null || metrics.netRevenue === null ? null : group.netRevenue + metrics.netRevenue;
     groups.set(key, group);
   }
   // 展示排序（2026-09-20 用户要求）：日期倒序（最新在上）；同一天按整体消耗从大到小，
@@ -1287,7 +1288,7 @@ function displayRecordGroups(rows) {
     .map((group) => ({
       ...group,
       roi: group.totalSpend > 0 ? group.totalRevenue / group.totalSpend : 0,
-      netRoi: group.totalSpend > 0 ? group.netRevenue / group.totalSpend : 0,
+      netRoi: group.netRevenue === null ? null : (group.totalSpend > 0 ? group.netRevenue / group.totalSpend : 0),
     }))
     .sort((a, b) =>
       String(b.date || "").localeCompare(String(a.date || ""))
@@ -1300,15 +1301,15 @@ function renderRecords() {
   const groups = displayRecordGroups(filteredRecords());
   const totalSpend = groups.reduce((acc, item) => acc + item.totalSpend, 0);
   const totalRevenue = groups.reduce((acc, item) => acc + item.totalRevenue, 0);
-  const netRevenue = groups.reduce((acc, item) => acc + item.netRevenue, 0);
+  const netRevenue = groups.some(item => item.netRevenue === null) ? null : groups.reduce((acc, item) => acc + item.netRevenue, 0);
   const totalRoi = totalSpend > 0 ? totalRevenue / totalSpend : 0;
-  const totalNetRoi = totalSpend > 0 ? netRevenue / totalSpend : 0;
+  const totalNetRoi = netRevenue === null ? null : (totalSpend > 0 ? netRevenue / totalSpend : 0);
   const summary = [
     ["整体消耗", money(totalSpend)],
     ["整体成交金额", money(totalRevenue)],
     ["整体ROI", totalRoi.toFixed(2)],
-    ["净成交金额", money(netRevenue)],
-    ["净ROI", totalNetRoi.toFixed(2)],
+    ["净成交金额", netRevenue === null ? "待补采" : money(netRevenue)],
+    ["净ROI", totalNetRoi === null ? "—" : totalNetRoi.toFixed(2)],
   ];
   $("#recordSummary").innerHTML = summary.map(([label, value]) => `<div class="summary-chip"><span>${label}</span><strong>${value}</strong></div>`).join("");
 
@@ -1337,8 +1338,8 @@ function renderRecords() {
         <td data-label="整体ROI" class="number-cell"><span class="cell-value"><span class="roi-value ${roi >= 1 ? "roi-good" : "roi-warn"}">${roi.toFixed(2)}</span></span></td>
         <td data-label="整体消耗" class="number-cell"><span class="cell-value">${money(spend, 2)}</span></td>
         <td data-label="整体成交金额" class="number-cell"><span class="cell-value">${money(revenue, 2)}</span></td>
-        <td data-label="净ROI" class="number-cell"><span class="cell-value"><span class="roi-value ${netRoi >= 1 ? "roi-good" : "roi-warn"}">${netRoi.toFixed(2)}</span></span></td>
-        <td data-label="净成交金额" class="number-cell"><span class="cell-value">${money(net, 2)}</span></td>
+        <td data-label="净ROI" class="number-cell"><span class="cell-value"><span class="roi-value ${netRoi >= 1 ? "roi-good" : "roi-warn"}">${netRoi === null ? "—" : netRoi.toFixed(2)}</span></span></td>
+        <td data-label="净成交金额" class="number-cell"><span class="cell-value">${net === null ? "待补采" : money(net, 2)}</span></td>
         <td data-label="操作" class="action-cell">
           <div class="table-actions">${actions}</div>
         </td>
@@ -1763,7 +1764,7 @@ function exportCsv() {
   const summary = groups.reduce((acc, item) => ({
     spend: acc.spend + item.totalSpend,
     revenue: acc.revenue + item.totalRevenue,
-    net: acc.net + item.netRevenue,
+    net: acc.net === null || item.netRevenue === null ? null : acc.net + item.netRevenue,
   }), { spend: 0, revenue: 0, net: 0 });
   // 与界面口径一致：合并后的行 + 只保留有数据的日期
   const rows = [
@@ -1778,13 +1779,13 @@ function exportCsv() {
         Number(group.roi.toFixed(4)),
         Number(group.totalSpend.toFixed(2)),
         Number(group.totalRevenue.toFixed(2)),
-        Number(group.netRoi.toFixed(4)),
-        Number(group.netRevenue.toFixed(2)),
+        group.netRoi === null ? "" : Number(group.netRoi.toFixed(4)),
+        group.netRevenue === null ? "" : Number(group.netRevenue.toFixed(2)),
       ]),
     [],
     ["合计", "", "", summary.spend > 0 ? Number((summary.revenue / summary.spend).toFixed(4)) : 0,
       Number(summary.spend.toFixed(2)), Number(summary.revenue.toFixed(2)),
-      summary.spend > 0 ? Number((summary.net / summary.spend).toFixed(4)) : 0, Number(summary.net.toFixed(2))],
+      summary.net === null ? "" : (summary.spend > 0 ? Number((summary.net / summary.spend).toFixed(4)) : 0), summary.net === null ? "" : Number(summary.net.toFixed(2))],
   ];
   // 第二张表保留未合并的原始记录，便于对账追溯
   const raw = [
@@ -1800,7 +1801,7 @@ function exportCsv() {
           record.douyinNumber || "—",
           Number(metrics.totalSpend.toFixed(2)),
           Number(metrics.totalRevenue.toFixed(2)),
-          Number(metrics.netRevenue.toFixed(2)),
+          metrics.netRevenue === null ? "" : Number(metrics.netRevenue.toFixed(2)),
           String(record.id || ""),
           String(record.advertiserId || (campaignById(record.campaignId) || {}).advertiserId || ""),
         ];
