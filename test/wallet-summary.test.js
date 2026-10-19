@@ -166,6 +166,12 @@ test("unknown opening date never guesses an August opening", () => {
   assert.equal(result.periodSpend, null);
   assert.equal(result.difference, null);
 });
+
+test('explicit shared reporting dates show existing debits but never fabricate an opening or a passing difference',()=>{
+  const result=project(wallet({kind:'shared',openingDate:undefined,reportStartDate:'2026-10-01',balanceLive:80,liveReadAt:new Date(now-60000).toISOString()}),[row('2026-10-01',{columns:{...row().columns,'共享钱包消耗(元)':'20.00'}})]);
+  assert.equal(result.periodSpend,20);assert.equal(result.recordCount,1);assert.equal(result.difference,null);assert.equal(result.complete,false);
+  assert.ok(result.messages.some(message=>message.includes('期初')));
+});
 test("default date range follows fresh cloud instead of stale first cache", () => {
   assert.deepEqual(defaultFinanceRange([row("2026-09-01"), row()]), { start: "2026-09-01", end: "2026-10-01" });
 });

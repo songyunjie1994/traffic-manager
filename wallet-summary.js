@@ -157,7 +157,11 @@
     const accounts = Array.isArray(wallet.accounts) ? wallet.accounts : [];
     const ids = [...new Set(accounts.map((account) => String(account?.advertiserId || "")).filter(Boolean))];
     const openingDate = validDate(wallet.openingDate) ? wallet.openingDate : null;
-    const startDate = openingDate ? shifted(openingDate, 1) : null;
+    // An explicit reporting range may display known shared-wallet debits even
+    // when its independent opening balance/date is unavailable. It never
+    // certifies a reconciled opening or creates an aggregate difference.
+    const reportStart = wallet.kind === 'shared' && validDate(wallet.reportStartDate) ? wallet.reportStartDate : null;
+    const startDate = openingDate ? shifted(openingDate, 1) : reportStart;
     const allRows = records.filter((record) => ids.includes(String(record.advertiserId)));
     const periodRows = startDate && endDate ? allRows.filter((record) => recordDate(record) >= startDate && recordDate(record) <= endDate) : [];
     const coveredIds = new Set(periodRows.map((record) => String(record.advertiserId)));
@@ -168,7 +172,8 @@
     const accountChecks = shared ? [] : accounts.map(account => accountCheck(account, records, openingDate, startDate, endDate));
     let complete = false, aggregateDifference = null;
     const messages = [];
-    if (!startDate) messages.push("缺少有效期初日期");
+    if (!openingDate) messages.push("缺少有效期初日期");
+    if (reportStart && !openingDate) messages.push('仅展示已采日结区间，不据此认定期初或对账通过');
     if (!periodRows.length) messages.push("没有可核验的财务日结，不按零处理");
     if (!coverageComplete) messages.push(`已采 ${coveredIds.size}/${ids.length} 个挂靠账户；日期缺口/冲突未核验，不按零处理`);
     if (periodRows.length && periodSpend === null) messages.push("消耗字段缺失或冲突，待核验");
