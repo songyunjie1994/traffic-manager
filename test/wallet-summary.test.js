@@ -15,6 +15,19 @@ test("amounts reject blanks, dashes, booleans, invalid grouping and unsafe amoun
   assert.equal(amount("¥1,234.56元"), 1234.56);
   assert.equal(amount("0.00"), 0);
 });
+
+test('fresh exact-wallet collector observations refresh display without altering manual config or duplicating balance',()=>{
+  const shared=wallet({kind:'shared',broker:'中介',walletId:'7685271229435134251',balanceLive:10,liveReadAt:'2026-10-01T12:00:00Z'});
+  const observed={id:shared.walletId,balance:68590,observedAt:'2026-10-02T11:59:00Z',sourceUrl:'https://business.oceanengine.com/site/account-manage/ecp/bidding/universe/account'};
+  const data={wallets:[shared],financeRecords:[],campaigns:[{advertiserId:shared.accounts[0].advertiserId,broker:'中介',sharedWalletObservation:observed}]};
+  const before=JSON.stringify(data);
+  assert.equal(projectWallets(data,{now})[0].balance,68590);
+  assert.equal(JSON.stringify(data),before);
+  for(const wrong of [{id:'other'},{sourceUrl:'https://example.com/site/account-manage/ecp/bidding/'},{balance:null},{observedAt:'2027-01-01T00:00:00Z'}]) {
+    const invalid={...data,campaigns:[{...data.campaigns[0],sharedWalletObservation:{...observed,...wrong}}]};
+    assert.equal(projectWallets(invalid,{now})[0].balance,10);
+  }
+});
 test("dates validate actual calendar days", () => {
   assert.equal(validDate("2026-02-30"), false);
   assert.equal(validDate("2026-10-01"), true);

@@ -246,8 +246,27 @@
     const wallets = Array.isArray(data.wallets) ? data.wallets : [];
     const owners = new Map();
     for (const wallet of wallets) for (const account of wallet.accounts || []) owners.set(String(account.advertiserId), (owners.get(String(account.advertiserId)) || 0) + 1);
-    return wallets.map(wallet => {
+    return wallets.map(configuredWallet => {
+      let wallet = configuredWallet;
+      // Collector evidence may be newer than the manually configured snapshot.
+      // Use only the exact configured wallet/account identity; never infer an
+      // assignment or sum the same shared balance once per advertiser.
+      const ids = new Set((wallet.accounts || []).map(account => String(account.advertiserId)));
+      const observations = wallet.kind === 'shared' ? (data.campaigns || [])
+        .filter(campaign => ids.has(String(campaign.advertiserId)) && campaign.broker === wallet.broker)
+        .map(campaign => campaign.sharedWalletObservation)
+        .filter(observation => observation && String(observation.id) === String(wallet.walletId)
+          && amount(observation.balance) !== null && amount(observation.balance) >= 0
+          && /^https:\/\/business\.oceanengine\.com\/(?:site|ebp)\/account-manage\/ecp\/bidding\//.test(observation.sourceUrl || '')
+          && Number.isFinite(Date.parse(observation.observedAt)) && Date.parse(observation.observedAt) <= now)
+        .sort((a,b) => Date.parse(b.observedAt) - Date.parse(a.observedAt)) : [];
+      const latest = observations[0];
+      const conflicting = latest && observations.some(observation => Date.parse(observation.observedAt) === Date.parse(latest.observedAt) && amount(observation.balance) !== amount(latest.balance));
+      if (latest && !conflicting && (!Number.isFinite(Date.parse(wallet.liveReadAt)) || Date.parse(latest.observedAt) > Date.parse(wallet.liveReadAt))) {
+        wallet = { ...wallet, balanceLive: amount(latest.balance), liveReadAt: latest.observedAt };
+      }
       const result = projectWallet(wallet, records, endDate, now, Boolean(options.offline), data.walletsUpdatedAt);
+      if (conflicting) result.messages.push('共享钱包余额观察值冲突，保留原快照待核验');
       if ((wallet.accounts || []).some(account => owners.get(String(account.advertiserId)) > 1)) {
         result.complete = false; result.difference = null; result.reconciliationStatus = "pending";
         result.messages.push("账户重复挂靠钱包，归属待确认");
