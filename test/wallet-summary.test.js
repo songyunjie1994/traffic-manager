@@ -28,6 +28,24 @@ test('fresh exact-wallet collector observations refresh display without altering
     assert.equal(projectWallets(invalid,{now})[0].balance,10);
   }
 });
+
+test('homepage balances use exact verified accounts and configured wallet identity once, never account totals',()=>{
+  const ids=['1871220354749898','1871220391294984'];
+  const shared=wallet({kind:'shared',broker:'李杨 tina',walletId:'7664392315365359910',balanceLive:10,
+    liveReadAt:'2026-10-01T12:00:00Z',accounts:ids.map(advertiserId=>({advertiserId}))});
+  const campaigns=ids.map(advertiserId=>({advertiserId,broker:'李杨 tina',sharedWalletObservation:{id:shared.walletId,
+    balance:123.45,observedAt:'2026-10-02T11:59:00Z',sourceKind:'account-home',bindingSource:'configured-account',
+    advertiserId,headerAdvertiserId:advertiserId,sourceUrl:`https://qianchuan.jinritemai.com/home?aavid=${advertiserId}`}}));
+  const data={wallets:[shared],financeRecords:[],campaigns},before=JSON.stringify(data);
+  const result=projectWallets(data,{now})[0];
+  assert.equal(result.balance,123.45); assert.equal(result.balanceStatus,'recent');
+  assert.match(result.messages.join('；'),/首页未显示钱包ID/); assert.equal(JSON.stringify(data),before);
+  for(const patch of [{headerAdvertiserId:ids[1]},{sourceUrl:`https://qianchuan.jinritemai.com/finance?aavid=${ids[0]}`},
+    {bindingSource:'guessed'},{advertiserId:ids[1]},{id:'other-wallet'}]) {
+    const invalid={...data,campaigns:[{...campaigns[0],sharedWalletObservation:{...campaigns[0].sharedWalletObservation,...patch}}]};
+    assert.equal(projectWallets(invalid,{now})[0].balance,10);
+  }
+});
 test("dates validate actual calendar days", () => {
   assert.equal(validDate("2026-02-30"), false);
   assert.equal(validDate("2026-10-01"), true);

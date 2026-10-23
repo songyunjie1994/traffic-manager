@@ -20,6 +20,22 @@
     return Number.isSafeInteger(cents) ? cents / 100 : null;
   }
 
+  function officialWalletObservation(observation, advertiserId) {
+    try {
+      const url = new URL(observation?.sourceUrl);
+      if (url.protocol !== 'https:' || url.username || url.password || url.port) return false;
+      if (url.hostname === 'business.oceanengine.com'
+        && /^\/(?:site|ebp)\/account-manage\/ecp\/bidding\//.test(url.pathname)) return true;
+      return url.hostname === 'qianchuan.jinritemai.com' && observation.sourceKind === 'account-home'
+        && typeof observation.balance === 'number' && Number.isFinite(observation.balance) && observation.balance >= 0
+        && ['page', 'configured-account'].includes(observation.bindingSource)
+        && String(advertiserId) === observation.advertiserId && observation.headerAdvertiserId === observation.advertiserId
+        && /^\d{10,30}$/.test(observation.advertiserId)
+        && url.searchParams.get('aavid') === observation.advertiserId && url.searchParams.getAll('aavid').length === 1
+        && /^(?:\/(?:home(?:page)?(?:\/index)?)?)\/?$/.test(url.pathname);
+    } catch { return false; }
+  }
+
   function metric(record, field, column) {
     if (record?.ambiguous) return null;
     const value = record?.columns?.[column];
@@ -259,10 +275,10 @@
       const ids = new Set((wallet.accounts || []).map(account => String(account.advertiserId)));
       const observations = wallet.kind === 'shared' ? (data.campaigns || [])
         .filter(campaign => ids.has(String(campaign.advertiserId)) && campaign.broker === wallet.broker)
+        .filter(campaign => officialWalletObservation(campaign.sharedWalletObservation, campaign.advertiserId))
         .map(campaign => campaign.sharedWalletObservation)
         .filter(observation => observation && String(observation.id) === String(wallet.walletId)
           && amount(observation.balance) !== null && amount(observation.balance) >= 0
-          && /^https:\/\/business\.oceanengine\.com\/(?:site|ebp)\/account-manage\/ecp\/bidding\//.test(observation.sourceUrl || '')
           && Number.isFinite(Date.parse(observation.observedAt)) && Date.parse(observation.observedAt) <= now)
         .sort((a,b) => Date.parse(b.observedAt) - Date.parse(a.observedAt)) : [];
       const latest = observations[0];
@@ -271,6 +287,9 @@
         wallet = { ...wallet, balanceLive: amount(latest.balance), liveReadAt: latest.observedAt };
       }
       const result = projectWallet(wallet, records, endDate, now, Boolean(options.offline), data.walletsUpdatedAt);
+      if (latest?.bindingSource === 'configured-account' && result.balanceReadAt === latest.observedAt) {
+        result.messages.push('首页共享余额按已配置账户挂靠关系匹配；首页未显示钱包ID');
+      }
       if (conflicting) result.messages.push('共享钱包余额观察值冲突，保留原快照待核验');
       if ((wallet.accounts || []).some(account => owners.get(String(account.advertiserId)) > 1)) {
         result.complete = false; result.difference = null; result.reconciliationStatus = "pending";
